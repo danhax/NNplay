@@ -62,38 +62,29 @@ ydata = yfunc(functype,xdata,xshift,xfac,yfac)
 
 ##### DO TENSORFLOW
 
-nlayers = 1
-
 # output to fit
 FF = tf.placeholder(tf.float32, shape=(nfunc,nsample))
 # input
 YY = tf.placeholder(tf.float32, shape=(nx,nsample))
 
+# sample weights and biases
+
+w0 = tf.get_variable('w0',(1,nsample),
+              initializer = tf.random_normal_initializer)
+b0 = tf.get_variable('b0',(1,nsample),
+              initializer=tf.constant_initializer(0.0))
+
 # NN weights and biases
 
-W = [None] * nlayers
-B = [None] * nlayers
-
-lastn = nx;
-
-nneur = [nfunc];
-for ilayer in range(nlayers):
-  W[ilayer] = tf.get_variable('W0',(nneur[ilayer],lastn),
+W = tf.get_variable('W',(nfunc,nx),
               initializer = tf.random_normal_initializer)
-  B[ilayer] = tf.get_variable('B0',(nneur[ilayer],1),
+B = tf.get_variable('B',(nfunc,1),
               initializer=tf.constant_initializer(0.0))
-  lastn = nneur[ilayer]
 
-Y = [None] * nlayers
-F = [None] * nlayers
+Y0 = YY * w0 + b0;
 
-lastY = YY;
-for ilayer in range(nlayers):
-  F[ilayer] = tf.matmul(W[ilayer],lastY) + B[ilayer]
-  Y[ilayer] = tf.sigmoid(F[ilayer])
-  lastY = Y[ilayer]
-
-F1 = lastY;
+Q1 = tf.matmul(W,Y0) + B
+F1 = tf.sigmoid(Q1)
 
 # error for each sample
 
@@ -109,7 +100,7 @@ OPT_operation = tf.train.AdamOptimizer().minimize(LOSS)
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
 
-  for _ in range(10000):
+  for _ in range(1000):
     
     _, loss_, Fpart_, F1_ = sess.run(
       [OPT_operation,LOSS,Fpart,F1],
