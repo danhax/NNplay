@@ -18,7 +18,7 @@ xdata = np.arange(xrange*nper)/nper
 # assert ndat == len(xdata)
 # exit()
 
-ydata = xdata + 20 * np.sin(xdata/10)
+ydata = xdata + 5 * np.sin(xdata)
 
 xdata = np.reshape(xdata,(ndat,1))
 ydata = np.reshape(ydata,(ndat,1))
@@ -33,34 +33,31 @@ yy = tf.placeholder(tf.float32, shape=(ndat,1))
 
 # with tf.variable_scope('linreg'):
 
-weights = tf.get_variable('weights',(1,1),
+# linear transform y = A * x + b
+
+A1 = tf.get_variable('A1',(1,1),
           initializer = tf.random_normal_initializer)
-bias = tf.get_variable('bias',(1,),
+b1 = tf.get_variable('b1',(1,),
           initializer=tf.constant_initializer(0.0))
 
-ypred = tf.matmul(xx,weights) + bias
-# loss = tf.reduce_sum((yy-ypred)**2/ndat)
-loss   = tf.reduce_sum(tf.abs(yy-ypred)/ndat)
+y1 = tf.matmul(xx,A1) + b1
 
-# opt = tf.train.AdamOptimizer()
-# opt_operation = opt.minimize(loss)
+# loss = tf.reduce_sum((yy-y1)**2/ndat)
+loss   = tf.reduce_sum(tf.abs(yy-y1)/ndat)
 
 opt_operation = tf.train.AdamOptimizer().minimize(loss)
 
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
-  _, loss_val = sess.run([opt_operation,loss],feed_dict={xx:xdata,yy:ydata})
 
-  print(loss_val)
-
-  for _ in range(5000):
+  for _ in range(1000):
     indices = np.random.choice(ndat,batch_size)
     xbatch,ybatch = xdata[indices], ydata[indices]
-    _, loss_val = sess.run([opt_operation, loss], feed_dict={xx:xdata,yy:ydata})
+    _, loss_val = sess.run([opt_operation, loss],
+                  feed_dict={xx:xdata,yy:ydata})
 
-    #  print(loss_val)
-    
-    currweights, currbias, currloss = sess.run([weights,bias,loss],{xx:xdata,yy:ydata})
+    currweights, currbias, currloss = sess.run(
+      [A1,b1,loss],{xx:xdata,yy:ydata})
 
     print('weight: %s  bias: %s  loss: %s '%(currweights,currbias,currloss))
 
