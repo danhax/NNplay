@@ -2,8 +2,9 @@
 
 xrange     = 10
 nper       = 4
-batch_size = 4
-nsample    = 2
+nsample    = 5
+sampleshift = [0,12,50,-23.5, 13.3];
+# batch_size = 4
 
 import tensorflow as tf
 import numpy as np
@@ -15,7 +16,7 @@ xdata = np.arange(xrange*nper)/nper
 
 xdata = np.reshape(xdata,(nx,1));
 
-xdata = np.column_stack((xdata,xdata + 12))
+xdata = xdata + sampleshift;
 
 # print(xdata.shape)
 # exit()
