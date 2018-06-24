@@ -10,6 +10,15 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 
+def myquad(x):
+  return np.power(x,2)
+
+funclist = [np.sin,myquad];
+
+###########################
+
+nfunc = len(funclist)
+
 sampleshift = np.random.normal(np.zeros([1,nsample]),sampledev)
 
 nx = xrange * nper
@@ -24,13 +33,13 @@ xdata = xdata + sampleshift;
 # print(xdata.shape)
 # exit()
 
-def sinfunc(xvals,shift,lin,fac):
-  yvals = shift + lin * xvals / xrange + fac * np.sin(xvals)
+def yfunc(ifunc,xvals,shift,lin,fac):
+  assert ifunc >= 0 and ifunc < nfunc 
+  yvals = shift + lin * xvals / xrange + \
+          fac * funclist[ifunc](xvals)
   return yvals
 
-# ydata = xdata + xrange / 2 * np.sin(xdata)
-
-ydata = sinfunc(xdata,3,1,2)
+ydata = yfunc(0,xdata,3,1,2)
 
 ny = len(ydata)
 
