@@ -11,10 +11,10 @@ import matplotlib.pyplot as plt
 # positive-valued functions
 
 def myquad(x):
-  return 10 * np.power(x/xrange,2)
+  return np.power(x/xrange,2)
 
 def mysin(x):
-  return 10 * np.sin(16.28*x/xrange)**2
+  return np.sin(16.28*x/xrange)**2
 
 funclist = [mysin,myquad]
 
@@ -22,16 +22,18 @@ funclist = [mysin,myquad]
 
 nfunc = len(funclist)
 
-def yfunc(ifuncs,xvals,xshift,yshift,xfac,yfac):
+# positive-valued function
+
+def yfunc(ifuncs,xvals,xshift,xfac,yfac):
   nsample = ifuncs.size
   assert np.all(np.array(
-    [xshift.size,yshift.size,xfac.size,yfac.size]) == nsample)
+    [xshift.size,xfac.size,yfac.size]) == nsample)
   assert np.all(ifuncs >= 0) and np.all(ifuncs < nfunc)
   yvals = np.zeros([nx,nsample])
   for isp in range(nsample):
     yvals[:,isp] = \
-      yshift[isp] + yfac[isp] * funclist[ifuncs[isp]](
-      xshift[isp] + xfac[isp] * xvals[:,0])
+      yfac[isp]**2 * funclist[ifuncs[isp]](xshift[isp] +
+      xfac[isp] * xvals[:,0])
   return yvals
 
 functype = np.random.choice(nfunc,nsample)
@@ -39,24 +41,26 @@ fdata    = np.zeros([nfunc,nsample])
 for isp in range(nsample):
   fdata[functype[isp],isp] = 1
 
-xshift   = np.random.normal(np.zeros(nsample))
-xfac     = np.random.normal(np.zeros(nsample))
-
-yshift   = np.random.normal(np.zeros(nsample))
-yfac     = np.random.normal(np.zeros(nsample))
+# x-values at which to evaluate the functions
 
 nx = xrange * nper
-
 xdata = np.arange(xrange*nper)/nper
 xdata = np.reshape(xdata,(nx,1));
 
-# print(xdata[:,0].shape)
-# print(xdata.shape)
-# exit()
+# get the positive-valued functions ydata(nx,nsample)
+#   with random parameters
 
-ydata = yfunc(functype,xdata,xshift,yshift,xfac,yfac)
+xshift   = np.random.normal(np.zeros(nsample))
+xfac     = np.random.normal(np.zeros(nsample))
+yfac     = np.random.normal(np.zeros(nsample))
 
-# output
+ydata = yfunc(functype,xdata,xshift,xfac,yfac)
+
+for isp in range(nsample):
+  plt.scatter(xdata,ydata[:,isp])
+plt.show()
+
+# output to fit
 FF = tf.placeholder(tf.float32, shape=(nfunc,nsample))
 
 # input
