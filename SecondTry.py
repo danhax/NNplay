@@ -64,8 +64,6 @@ ydata = yfunc(functype,xdata,xshift,xfac,yfac)
 
 nlayers = 1
 
-# data at each layer has domain [-inf,inf]
-
 # output to fit
 FF = tf.placeholder(tf.float32, shape=(nfunc,nsample))
 # input
@@ -76,21 +74,26 @@ YY = tf.placeholder(tf.float32, shape=(nx,nsample))
 W = [None] * nlayers
 B = [None] * nlayers
 
+lastn = nx;
+
+nneur = [nfunc];
 for ilayer in range(nlayers):
-  W[ilayer] = tf.get_variable('W0',(nfunc,nx),
+  W[ilayer] = tf.get_variable('W0',(nneur[ilayer],lastn),
               initializer = tf.random_normal_initializer)
-  B[ilayer] = tf.get_variable('B0',(nfunc,1),
+  B[ilayer] = tf.get_variable('B0',(nneur[ilayer],1),
               initializer=tf.constant_initializer(0.0))
+  lastn = nneur[ilayer]
 
 Y = [None] * nlayers
-# F = [None] * nlayers
+F = [None] * nlayers
 
 lastY = YY;
 for ilayer in range(nlayers):
-  Y[ilayer] = tf.matmul(W[ilayer],lastY) + B[0]
+  F[ilayer] = tf.matmul(W[ilayer],lastY) + B[ilayer]
+  Y[ilayer] = tf.sigmoid(F[ilayer])
   lastY = Y[ilayer]
 
-F1 = tf.sigmoid(lastY)
+F1 = lastY;
 
 # error for each sample
 
@@ -106,7 +109,7 @@ OPT_operation = tf.train.AdamOptimizer().minimize(LOSS)
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
 
-  for _ in range(50000):
+  for _ in range(10000):
     
     _, loss_, Fpart_, F1_ = sess.run(
       [OPT_operation,LOSS,Fpart,F1],
