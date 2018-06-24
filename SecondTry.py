@@ -1,110 +1,105 @@
 #!/usr/local/bin/python3.6
 
-xrange     = 10
-sampledev  = 30
-nper       = 4
-nsample    = 5
-batch_size = 4
+xrange     = 4
+nper       = 10
+nsample    = 12
 
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 
 def myquad(x):
-  return np.power(x,2)
+  return 10 * np.power(x/xrange,2)
 
-funclist = [np.sin,myquad];
+def mysin(x):
+  return 10 * np.sin(6.28*x/xrange)
+
+funclist = [mysin,myquad]
 
 ###########################
 
 nfunc = len(funclist)
 
-sampleshift = np.random.normal(np.zeros([1,nsample]),sampledev)
+functype = np.random.choice(nfunc,nsample)
+fdata    = np.zeros([nfunc,nsample])
+for isp in range(nsample):
+  fdata[functype[isp],isp] = 1
+
+xshift   = np.random.normal(np.ones(nsample))
+yshift   = np.random.normal(np.ones(nsample))
+xfac     = np.random.normal(np.ones(nsample))
+yfac     = np.random.normal(np.ones(nsample))
 
 nx = xrange * nper
 
 xdata = np.arange(xrange*nper)/nper
-
 xdata = np.reshape(xdata,(nx,1));
-
-xdata = xdata + sampleshift;
 
 # print(xdata[:,0].shape)
 # print(xdata.shape)
 # exit()
 
-def yfunc(ifunc,xvals,shift,lin,fac):
-  assert ifunc >= 0 and ifunc < nfunc 
-  yvals = shift + lin * xvals / xrange + \
-          fac * funclist[ifunc](xvals)
+def yfunc(ifuncs,xvals,xshift,yshift,xfac,yfac):
+  nsample = ifuncs.size
+  assert np.all(np.array(
+    [xshift.size,yshift.size,xfac.size,yfac.size]) == nsample)
+  assert np.all(ifuncs >= 0) and np.all(ifuncs < nfunc)
+  yvals = np.zeros([nx,nsample])
+  for isp in range(nsample):
+    yvals[:,isp] = \
+      yshift[isp] + yfac[isp] * funclist[ifuncs[isp]](
+      xshift[isp] + xfac[isp] * xvals[:,0])
   return yvals
 
-ydata = yfunc(0,xdata,3,1,2)
+ydata = yfunc(functype,xdata,xshift,yshift,xfac,yfac)
 
-ny = len(ydata)
+FF = tf.placeholder(tf.float32, shape=(nfunc,nsample))
 
-xx = tf.placeholder(tf.float32, shape=(nx,batch_size))
-yy = tf.placeholder(tf.float32, shape=(ny,batch_size))
-
-XX = tf.placeholder(tf.float32, shape=(nx,nsample))
 YY = tf.placeholder(tf.float32, shape=(nx,nsample))
 
-# with tf.variable_scope('linreg'):
-
-# linear transform y = A * x + b
-
-A1 = tf.get_variable('A1',(ny,nx),
+A1 = tf.get_variable('A1',(nfunc,nx),
           initializer = tf.random_normal_initializer)
-b1 = tf.get_variable('b1',(ny,1),
+B1 = tf.get_variable('b1',(nfunc,1),
           initializer=tf.constant_initializer(0.0))
 
-y1 = tf.matmul(A1,xx) + b1
-Y1 = tf.matmul(A1,XX) + b1
+F1 = tf.sigmoid(tf.matmul(A1,YY) + B1)
 
-# print(y1.shape)
-# print(nx,ny)
-# exit()
+# error for each sample
+Fpart = tf.reshape(tf.reduce_sum((FF-F1)**2,axis=0),(1,nsample))
 
-# # loss = tf.reduce_sum((yy-y1)**2)/ny
-# loss   = tf.reduce_sum(tf.abs(yy-y1))/ny
+Fsum = tf.reduce_sum(Fpart)
 
-# ysum = tf.reduce_sum((yy-y1)**2)
-# Ysum = tf.reduce_sum((YY-Y1)**2)
-# asum = tf.reduce_sum(A1**2)
+LOSS = Fsum;
 
-ysum = tf.reduce_sum(abs(yy-y1))
-Ysum = tf.reduce_sum(abs(YY-Y1))
-asum = tf.reduce_sum(abs(A1))
-
-asum = 1;
-
-loss = ysum * asum
-LOSS = Ysum * asum
-
-opt_operation = tf.train.AdamOptimizer().minimize(loss)
+# opt_operation = tf.train.AdamOptimizer().minimize(loss)
 OPT_operation = tf.train.AdamOptimizer().minimize(LOSS)
 
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
 
-  for _ in range(5000):
-    indices = np.random.choice(nsample,batch_size)
+  for _ in range(500):
+#    indices = np.random.choice(nsample,batch_size)
+#    xbatch,ybatch = xdata[:,indices], ydata[:,indices]
 
-    xbatch,ybatch = xdata[:,indices], ydata[:,indices]
-#    _, loss_ = sess.run([opt_operation,loss],
-#                     feed_dict={xx:xbatch,yy:ybatch})
+    _, loss_, Fpart_, F1_ = sess.run(
+      [OPT_operation,LOSS,Fpart,F1],
+      feed_dict={YY:ydata,FF:fdata})
 
-    _, loss_ = sess.run([OPT_operation,LOSS],
-                     feed_dict={XX:xdata,YY:ydata})
-
-    Y1_, = sess.run([Y1],{XX:xdata})
-
-#     print('weight: %s  bias: %s  loss: %s '
-#       %(currweights,currbias,currloss))
     print('loss: %s '%(loss_))
 
-plt.scatter(xdata,ydata)
-plt.scatter(xdata,Y1_)
+sindex = np.arange(nsample);
+sindex = np.reshape(sindex,(1,nsample))
+
+print(np.transpose(np.concatenate((Fpart_,functype[sindex]))))
+
+#print(Fpart_)
+#print(functype[sindex])
+
+print()
+
+print(np.transpose(F1_))
+
+plt.scatter(sindex,Fpart_)
 plt.show()
-
-
+plt.scatter(functype[sindex],Fpart_)
+plt.show()
