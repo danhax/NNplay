@@ -4,9 +4,7 @@ xrange     = 10
 sampledev  = 30
 nper       = 4
 nsample    = 5
-
-# sampleshift = [0,12,50,-23.5, 13.3];
-# batch_size = 4
+batch_size = 4
 
 import tensorflow as tf
 import numpy as np
@@ -22,15 +20,19 @@ xdata = np.reshape(xdata,(nx,1));
 
 xdata = xdata + sampleshift;
 
+# print(xdata[:,0].shape)
 # print(xdata.shape)
 # exit()
 
-ydata = xdata + 5 * np.sin(xdata)
+ydata = xdata + xrange / 2 * np.sin(xdata)
 
 ny = len(ydata)
 
-xx = tf.placeholder(tf.float32, shape=(nx,nsample))
-yy = tf.placeholder(tf.float32, shape=(ny,nsample))
+xx = tf.placeholder(tf.float32, shape=(nx,batch_size))
+yy = tf.placeholder(tf.float32, shape=(ny,batch_size))
+
+XX = tf.placeholder(tf.float32, shape=(nx,nsample))
+YY = tf.placeholder(tf.float32, shape=(nx,nsample))
 
 # with tf.variable_scope('linreg'):
 
@@ -38,10 +40,11 @@ yy = tf.placeholder(tf.float32, shape=(ny,nsample))
 
 A1 = tf.get_variable('A1',(ny,nx),
           initializer = tf.random_normal_initializer)
-b1 = tf.get_variable('b1',(1,1),
+b1 = tf.get_variable('b1',(ny,1),
           initializer=tf.constant_initializer(0.0))
 
 y1 = tf.matmul(A1,xx) + b1
+Y1 = tf.matmul(A1,XX) + b1
 
 # print(y1.shape)
 # print(nx,ny)
@@ -50,34 +53,43 @@ y1 = tf.matmul(A1,xx) + b1
 # # loss = tf.reduce_sum((yy-y1)**2)/ny
 # loss   = tf.reduce_sum(tf.abs(yy-y1))/ny
 
-ysum = tf.reduce_sum((yy-y1)**2)
-asum = tf.reduce_sum(A1**2)
+# ysum = tf.reduce_sum((yy-y1)**2)
+# Ysum = tf.reduce_sum((YY-Y1)**2)
+# asum = tf.reduce_sum(A1**2)
 
-# ysum = tf.reduce_sum(abs(yy-y1))
-# asum = tf.reduce_sum(abs(A1))
+ysum = tf.reduce_sum(abs(yy-y1))
+Ysum = tf.reduce_sum(abs(YY-Y1))
+asum = tf.reduce_sum(abs(A1))
 
-loss = ysum / asum
+asum = 1;
+
+loss = ysum * asum
+LOSS = Ysum * asum
+
 opt_operation = tf.train.AdamOptimizer().minimize(loss)
+OPT_operation = tf.train.AdamOptimizer().minimize(LOSS)
 
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
 
   for _ in range(10000):
-    # indices = np.random.choice(nx,batch_size)
-    # xbatch,ybatch = xdata[xindices], ydata[indices]
-    #
-    _, loss_val = sess.run([opt_operation, loss],
-                  feed_dict={xx:xdata,yy:ydata})
+    indices = np.random.choice(nsample,batch_size)
 
-    A1_, b1_, y1_, loss_ = sess.run(
-      [A1,b1,y1,loss],{xx:xdata,yy:ydata})
+    xbatch,ybatch = xdata[:,indices], ydata[:,indices]
+#    _, loss_ = sess.run([opt_operation,loss],
+#                     feed_dict={xx:xbatch,yy:ybatch})
+
+    _, loss_ = sess.run([OPT_operation,LOSS],
+                     feed_dict={XX:xdata,YY:ydata})
+
+    Y1_, = sess.run([Y1],{XX:xdata})
 
 #     print('weight: %s  bias: %s  loss: %s '
 #       %(currweights,currbias,currloss))
     print('loss: %s '%(loss_))
 
 plt.scatter(xdata,ydata)
-plt.scatter(xdata,y1_)
+plt.scatter(xdata,Y1_)
 plt.show()
 
 
