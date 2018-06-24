@@ -62,21 +62,35 @@ ydata = yfunc(functype,xdata,xshift,xfac,yfac)
 
 ##### DO TENSORFLOW
 
+nlayers = 1
+
+# data at each layer has domain [-inf,inf]
+
 # output to fit
 FF = tf.placeholder(tf.float32, shape=(nfunc,nsample))
-
 # input
 YY = tf.placeholder(tf.float32, shape=(nx,nsample))
 
-W1 = tf.get_variable('W1',(nfunc,nx),
-          initializer = tf.random_normal_initializer)
-B1 = tf.get_variable('B1',(nfunc,1),
-          initializer=tf.constant_initializer(0.0))
+# NN weights and biases
 
-# Y1 = tf.exp(tf.matmul(W1,tf.log(YY)) + B1)
-# F1 = 1/(1+Y1)
+W = [None] * nlayers
+B = [None] * nlayers
 
-F1 = tf.sigmoid(tf.matmul(W1,YY) + B1)
+for ilayer in range(nlayers):
+  W[ilayer] = tf.get_variable('W0',(nfunc,nx),
+              initializer = tf.random_normal_initializer)
+  B[ilayer] = tf.get_variable('B0',(nfunc,1),
+              initializer=tf.constant_initializer(0.0))
+
+Y = [None] * nlayers
+# F = [None] * nlayers
+
+lastY = YY;
+for ilayer in range(nlayers):
+  Y[ilayer] = tf.matmul(W[ilayer],lastY) + B[0]
+  lastY = Y[ilayer]
+
+F1 = tf.sigmoid(lastY)
 
 # error for each sample
 
