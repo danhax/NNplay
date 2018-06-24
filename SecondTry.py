@@ -56,9 +56,11 @@ yfac     = np.random.normal(np.zeros(nsample))
 
 ydata = yfunc(functype,xdata,xshift,xfac,yfac)
 
-for isp in range(nsample):
-  plt.scatter(xdata,ydata[:,isp])
-plt.show()
+# for isp in range(nsample):
+#   plt.scatter(xdata,ydata[:,isp])
+# plt.show()
+
+##### DO TENSORFLOW
 
 # output to fit
 FF = tf.placeholder(tf.float32, shape=(nfunc,nsample))
@@ -68,13 +70,18 @@ YY = tf.placeholder(tf.float32, shape=(nx,nsample))
 
 W1 = tf.get_variable('W1',(nfunc,nx),
           initializer = tf.random_normal_initializer)
-B1 = tf.get_variable('b1',(nfunc,1),
+B1 = tf.get_variable('B1',(nfunc,1),
           initializer=tf.constant_initializer(0.0))
 
-F1 = tf.sigmoid(tf.matmul(W1**2,YY) + B1)
+# Y1 = tf.exp(tf.matmul(W1,tf.log(YY)) + B1)
+# F1 = 1/(1+Y1)
+
+F1 = tf.sigmoid(tf.matmul(W1,YY) + B1)
 
 # error for each sample
+
 Fpart = tf.reshape(tf.reduce_sum((FF-F1)**2,axis=0),(1,nsample))
+# Fpart = tf.reshape(tf.reduce_sum(tf.abs(FF-F1),axis=0),(1,nsample))
 
 Fsum = tf.reduce_sum(Fpart)
 
@@ -85,7 +92,7 @@ OPT_operation = tf.train.AdamOptimizer().minimize(LOSS)
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
 
-  for _ in range(500):
+  for _ in range(50000):
     
     _, loss_, Fpart_, F1_ = sess.run(
       [OPT_operation,LOSS,Fpart,F1],
@@ -96,13 +103,12 @@ with tf.Session() as sess:
 sindex = np.arange(nsample);
 sindex = np.reshape(sindex,(1,nsample))
 
-print('errors and actual')
-print(np.transpose(np.concatenate((Fpart_,functype[sindex]))))
+bestguess = np.reshape(np.argmax(F1_,axis=0),(1,nsample))
 
-print()
-
-print('output')
-print(np.transpose(F1_))
+print('actual, bestguess, error')
+print(np.array2string(np.transpose(np.concatenate(
+  (functype[sindex], bestguess, Fpart_))),
+  formatter={'float_kind':lambda x: '%.4f' % x}))
 
 plt.scatter(sindex,Fpart_)
 plt.show()
