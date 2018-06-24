@@ -35,12 +35,16 @@ yy = tf.placeholder(tf.float32, shape=(ny,1))
 
 # linear transform y = A * x + b
 
-A1 = tf.get_variable('A1',(1,1),
+A1 = tf.get_variable('A1',(ny,nx),
           initializer = tf.random_normal_initializer)
 b1 = tf.get_variable('b1',(1,1),
           initializer=tf.constant_initializer(0.0))
 
-y1 = tf.matmul(xx,A1) + b1
+y1 = tf.matmul(A1,xx) + b1
+
+# print(y1.shape)
+# print(nx,ny)
+# exit()
 
 # loss = tf.reduce_sum((yy-y1)**2/ny)
 loss   = tf.reduce_sum(tf.abs(yy-y1)/ny)
@@ -50,7 +54,7 @@ opt_operation = tf.train.AdamOptimizer().minimize(loss)
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
 
-  for _ in range(5000):
+  for _ in range(1000):
     # indices = np.random.choice(nx,batch_size)
     # xbatch,ybatch = xdata[xindices], ydata[indices]
     #
@@ -60,10 +64,12 @@ with tf.Session() as sess:
     currweights, currbias, currloss = sess.run(
       [A1,b1,loss],{xx:xdata,yy:ydata})
 
-    print('weight: %s  bias: %s  loss: %s '%(currweights,currbias,currloss))
+#     print('weight: %s  bias: %s  loss: %s '
+#       %(currweights,currbias,currloss))
+    print('loss: %s '%(currloss))
 
 plt.scatter(xdata,ydata)
-plt.scatter(xdata,currweights*xdata+currbias)
+plt.scatter(xdata,np.matmul(currweights, xdata) + currbias)
 plt.show()
 
 
