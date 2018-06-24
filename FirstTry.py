@@ -1,14 +1,18 @@
 #!/usr/local/bin/python3.6
 
 xrange     = 10
+sampledev  = 30
 nper       = 4
 nsample    = 5
-sampleshift = [0,12,50,-23.5, 13.3];
+
+# sampleshift = [0,12,50,-23.5, 13.3];
 # batch_size = 4
 
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
+
+sampleshift = np.random.normal(np.zeros([1,nsample]),sampledev)
 
 nx = xrange * nper
 
@@ -46,11 +50,11 @@ y1 = tf.matmul(A1,xx) + b1
 # # loss = tf.reduce_sum((yy-y1)**2)/ny
 # loss   = tf.reduce_sum(tf.abs(yy-y1))/ny
 
-# ysum = tf.reduce_sum((yy-y1)**2)
-# asum = tf.reduce_sum(A1**2)
+ysum = tf.reduce_sum((yy-y1)**2)
+asum = tf.reduce_sum(A1**2)
 
-ysum = tf.reduce_sum(abs(yy-y1))
-asum = tf.reduce_sum(abs(A1))
+# ysum = tf.reduce_sum(abs(yy-y1))
+# asum = tf.reduce_sum(abs(A1))
 
 loss = ysum / asum
 opt_operation = tf.train.AdamOptimizer().minimize(loss)
@@ -58,7 +62,7 @@ opt_operation = tf.train.AdamOptimizer().minimize(loss)
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
 
-  for _ in range(500):
+  for _ in range(10000):
     # indices = np.random.choice(nx,batch_size)
     # xbatch,ybatch = xdata[xindices], ydata[indices]
     #
