@@ -72,61 +72,83 @@ ytest_actual  = getdata(functype_test)
 #   plt.scatter(xdata,ytrain_actual[:,ivec])
 # plt.show()
 
-convlen = 2;
+convlen = 1;
 
 nc = nx + 1 - convlen;
 
 convnum = 1;
 
 def myconv(inp,C):
-  # inp(inlen,1)
+
+  # want NWC inp(nvec, inlen, 1)    nbatch=nvec  width=inlen
+  #          C   convlen,1,nconv)
+  # have
+  # inp(inlen,nvec)
   # C(convlen,nconv)
-  # outp(veclen+1-convlen,nconv)
-  inlen = len(inp)
+  # outp(inlen+1-convlen,nvec,nconv)
+
+  inlen = inp.shape[0]
+  nvec = inp.shape[1]
   convlen = C.shape[0]
   nconv = C.shape[1]
-  outlen = inlen + 1 - convlen
-  outp = np.zeros([outlen,nconv]);
-  for iconv in range(nconv):
-    for ilen in range(convlen):
-      outp[:,iconv] = outp[:,iconv] + \
-                      inp[1+iconv : outlen+iconv] * C[ilen,iconv]
+  
+  outlen  = inlen + 1 - convlen
+  
+  inp=tf.reshape(tf.transpose(inp),(nvec,inlen,1))
+  C  =tf.reshape(C,                (convlen,1,nconv))
+
+  outp = tf.nn.conv1d(inp,C,1,'SAME')
+  # have outp(nvec, outlen, nconv)
+  outp = tf.transpose(outp,perm=[1,0,2])
+  # now have outp(outlen,nvec,nconv)
+
+  # print(outp.shape)
+  # print([outlen,nvec,nconv])
+
+  return outp
+
 
 ##### DO TENSORFLOW
 
 # output to fit for training
 Ftrain_fit = tf.placeholder(tf.float64, shape=(nfunc,ntrain))
+
 # input
 Ytrain_fit = tf.placeholder(tf.float64, shape=(nx,ntrain))
 
 # NN weights and biases
 
-W = tf.get_variable('W',(nfunc,nx),
+# weights, linear transformation W(nfunc,nc) for each convnum
+#
+W = tf.get_variable('W',(nfunc,nc,convnum),
               dtype=tf.float64,
               initializer = tf.random_normal_initializer)
-B = tf.get_variable('B',(nfunc,1),
+B = tf.get_variable('B',(nfunc,convnum),
               dtype=tf.float64,
               initializer=tf.constant_initializer(0.0))
-
 C = tf.get_variable('C',(convlen,convnum),
               dtype=tf.float64,
               initializer = tf.random_normal_initializer)
 
 ##############
 
-npolywts = 3;
+def myNNfunc(YY,W,B,C):
+  # YY(nx,nvec)
+  nvec = YY.shape[1]
+  
+  Y0 = myconv(YY,C)
 
-def myNNfunc(YY,W,B):
-
-  Y0 = YY
-
-  Q1 = tf.matmul(W,Y0) + B
+  Q1 = 0;
+  for iconv in range(convnum):
+    Q1 = Q1 + tf.matmul(tf.reshape(W[:,:,iconv],(nfunc,nc)),
+                        tf.reshape(Y0[:,:,iconv],(nc,nvec))) \
+         + tf.reshape(B[:,iconv],(nfunc,1))
   F1 = tf.sigmoid(Q1)
   return F1
 
 ######      TRAIN    ######
 
-Ftrain_NN = myNNfunc(Ytrain_fit,W,B)
+Ftrain_NN = myNNfunc(Ytrain_fit,W,B,C)
 
 # error for each sample
 train_lossper = tf.reshape(
@@ -138,15 +160,16 @@ OPT_train = tf.train.AdamOptimizer().minimize(train_LOSS)
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
 
-  for _ in range(2000):
+  for _ in range(200):
     
-    _, train_loss_, train_lossper_, Ftrain_NN_, Wtrain_, Btrain_ = sess.run(
-      [OPT_train,train_LOSS,train_lossper,Ftrain_NN,W,B]
+    _, train_loss_, train_lossper_, Ftrain_NN_, W_, B_, C_ = sess.run(
+      [OPT_train,train_LOSS,train_lossper,Ftrain_NN,W,B,C]
       ,feed_dict={Ytrain_fit:ytrain_actual,Ftrain_fit:ftrain_actual})
     print('loss: %s '%(train_loss_))
 
-Wtrain_ = np.double(Wtrain_)
-Btrain_ = np.double(Btrain_)
+W_ = np.array(W_)
+B_ = np.array(B_)
+C_ = np.array(C_)
 
 trainindex = np.arange(ntrain);
 trainindex = np.reshape(trainindex,(1,ntrain))
@@ -166,7 +189,7 @@ plt.show()
 
 ######      TEST    ######
 
-Ftest_NN = myNNfunc(ytest_actual,Wtrain_,Btrain_)
+Ftest_NN = myNNfunc(ytest_actual,W_,B_,C_)
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
   Ftest_NN_ = sess.run(Ftest_NN)
