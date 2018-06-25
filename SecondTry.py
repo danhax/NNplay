@@ -77,21 +77,33 @@ ytest_actual  = getdata(functype_test)
 ##### DO TENSORFLOW
 
 # output to fit for training
-Ftrain_fit = tf.placeholder(tf.float32, shape=(nfunc,ntrain))
+Ftrain_fit = tf.placeholder(tf.float64, shape=(nfunc,ntrain))
 # input
-Ytrain_fit = tf.placeholder(tf.float32, shape=(nx,ntrain))
-Ytest_fit  = tf.placeholder(tf.float32, shape=(nx,ntest))
+Ytrain_fit = tf.placeholder(tf.float64, shape=(nx,ntrain))
+Ytest_fit  = tf.placeholder(tf.float64, shape=(nx,ntest))
 
 # NN weights and biases
 
 W = tf.get_variable('W',(nfunc,nx),
+              dtype=tf.float64,
               initializer = tf.random_normal_initializer)
 B = tf.get_variable('B',(nfunc,1),
+              dtype=tf.float64,
               initializer=tf.constant_initializer(0.0))
 
-def myNNfunc(YY,W,B,w0,w1,w2):
+##############
 
-  Y0 = w0 + w1 * YY + w2 * YY**2
+npolywts = 3;
+
+def myNNfunc(YY,W,B,ww):
+  # YY(nx,nvec)
+  # W(nfunc,nx)  B(nfunc,1)
+  # ww(npolywts,nvec)
+
+  nvec = YY.shape[1];
+  Y0 = tf.reshape(ww[0,:],[1,nvec]) + \
+       tf.reshape(ww[1,:],[1,nvec]) * YY + \
+       tf.reshape(ww[2,:],[1,nvec]) * YY**2
 
   Q1 = tf.matmul(W,Y0) + B
   F1 = tf.sigmoid(Q1)
@@ -101,27 +113,24 @@ def myNNfunc(YY,W,B,w0,w1,w2):
 
 # sample polynomial weights
 
-doSampleFit = False
+doSampleFit = True
 
 if doSampleFit:
-  w0train = tf.get_variable('w0train',(1,ntrain),
-             initializer = tf.random_normal_initializer)
-  w0test  = tf.get_variable('w0test',(1,ntest),
-             initializer = tf.random_normal_initializer)
+  wtrain = tf.get_variable('wtrain',(npolywts,ntrain),
+           dtype=tf.float64,
+           initializer = tf.random_normal_initializer)
+  wtest  = tf.get_variable('wtest',(npolywts,ntest),
+           dtype=tf.float64,
+           initializer = tf.random_normal_initializer)
 else:
+  wtrain = np.array([[0],[1],[0]])*np.ones([1,ntrain])
+  wtest  = np.array([[0],[1],[0]])*np.ones([1,ntest])
 
-  w0train = np.zeros([1,ntrain])
-  w1train = np.ones([1,ntrain])
-  w2train = np.zeros([1,ntrain])
-
-  w0test = np.zeros([1,ntest])
-  w1test = np.ones([1,ntest])
-  w2test = np.zeros([1,ntest])
-
+# print(wtrain[0,:].reshape(1,ntrain).shape)
 
 ######      TRAIN    ######
 
-Ftrain_NN = myNNfunc(Ytrain_fit,W,B,w0train,w1train,w2train)
+Ftrain_NN = myNNfunc(Ytrain_fit,W,B,wtrain)
 
 # error for each sample
 train_lossper = tf.reshape(
@@ -161,11 +170,33 @@ plt.show()
 
 ######      TEST    ######
 
-Ftest_NN = myNNfunc(ytest_actual,Wtrain_,Btrain_,w0test,w1test,w2test)
 
-with tf.Session() as sess:
-  sess.run(tf.global_variables_initializer())
-  Ftest_NN_ = sess.run(Ftest_NN)
+if not doSampleFit:
+
+  Ftest_NN = myNNfunc(ytest_actual,Wtrain_,Btrain_,wtest)
+  with tf.Session() as sess:
+    sess.run(tf.global_variables_initializer())
+    Ftest_NN_ = sess.run(Ftest_NN)
+
+else:
+
+  Ftest_NN = myNNfunc(Ytest_fit,Wtrain_,Btrain_,wtest)
+  # error for each sample
+  test_lossper = tf.reshape(
+    tf.reduce_sum((Ftest_NN-1)**2*Ftest_NN**2,axis=0),(1,ntest))
+  # summed over samples
+  test_LOSS = tf.reduce_sum(test_lossper);
+  OPT_test = tf.train.AdamOptimizer().minimize(test_LOSS)
+
+  with tf.Session() as sess:
+    sess.run(tf.global_variables_initializer())
+
+    for _ in range(2000):
+    
+      _, test_loss_, test_lossper_, Ftest_NN_ = sess.run(
+        [OPT_test,test_LOSS,test_lossper,Ftest_NN]
+        ,feed_dict={Ytest_fit:ytest_actual})
+      print('loss: %s '%(test_loss_))
 
 Ftest_NN_ = np.array(Ftest_NN_)
 
