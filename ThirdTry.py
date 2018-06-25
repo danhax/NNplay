@@ -1,15 +1,30 @@
 #!/usr/local/bin/python3.6
 
+#######   settings     #######
+
 xrange     = 4
 nper       = 10
 ntrain    = 1000
 ntest     = 20
 
+convlen = 10
+convnum = 3
+
+nTrainSteps = 10000
+
+##############################
+
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 
-# positive-valued functions
+###### x-values at which to evaluate the functions
+
+nx = xrange * nper
+xdata = np.arange(xrange*nper)/nper
+xdata = np.reshape(xdata,(nx,1));
+
+######  positive-valued functions
 
 def myquad(x):
   return x/xrange + np.power(x/xrange,2)
@@ -19,15 +34,7 @@ def mysin(x):
 
 funclist = [mysin,myquad]
 
-###########################
-
 nfunc = len(funclist)
-
-# x-values at which to evaluate the functions
-
-nx = xrange * nper
-xdata = np.arange(xrange*nper)/nper
-xdata = np.reshape(xdata,(nx,1));
 
 # get the positive-valued functions ydata(nx,ntrain)
 #   with random parameters
@@ -54,6 +61,8 @@ def getdata(functype):
   ydata  = yfunc(functype,xdata,xshift,xfac,yfac)
   return ydata
 
+######  random functions for train and test
+
 functype_train = np.random.choice(nfunc,ntrain)
 functype_test  = np.random.choice(nfunc,ntest)
 
@@ -72,14 +81,11 @@ ytest_actual  = getdata(functype_test)
 #   plt.scatter(xdata,ytrain_actual[:,ivec])
 # plt.show()
 
-convlen = 2;
+#####   OKAY.  convolution size:
 
 nc = nx + 1 - convlen;
 
-convnum = 1;
-
-
-##### DO TENSORFLOW
+#####   DO TENSORFLOW
 
 def myconv(inp,C):
 
@@ -154,7 +160,7 @@ OPT_train = tf.train.AdamOptimizer().minimize(train_LOSS)
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
 
-  for _ in range(200):
+  for _ in range(nTrainSteps):
     
     _, train_loss_, train_lossper_, Ftrain_NN_, W_, B_, C_ = sess.run(
       [OPT_train,train_LOSS,train_lossper,Ftrain_NN,W,B,C]
