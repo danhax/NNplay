@@ -2,7 +2,7 @@
 
 xrange     = 4
 nper       = 10
-ntrain    = 30
+ntrain    = 1000
 ntest     = 20
 
 import tensorflow as tf
@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 # positive-valued functions
 
 def myquad(x):
-  return np.power(x/xrange,2)
+  return x/xrange + np.power(x/xrange,2)
 
 def mysin(x):
   return np.sin(16.28*x/xrange)**2
@@ -58,8 +58,12 @@ functype_train = np.random.choice(nfunc,ntrain)
 functype_test  = np.random.choice(nfunc,ntest)
 
 ftrain_actual          = np.zeros([nfunc,ntrain])
-for isp in range(ntrain):
-  ftrain_actual[functype_train[isp],isp] = 1
+for ivec in range(ntrain):
+  ftrain_actual[functype_train[ivec],ivec] = 1
+
+ftest_actual          = np.zeros([nfunc,ntest])
+for ivec in range(ntest):
+  ftest_actual[functype_test[ivec],ivec] = 1
 
 ytrain_actual = getdata(functype_train)
 ytest_actual  = getdata(functype_test)
@@ -67,6 +71,8 @@ ytest_actual  = getdata(functype_test)
 # for ivec in range(ntrain):
 #   plt.scatter(xdata,ytrain_actual[:,ivec])
 # plt.show()
+
+
 
 ##### DO TENSORFLOW
 
@@ -76,16 +82,16 @@ Ftrain_fit = tf.placeholder(tf.float32, shape=(nfunc,ntrain))
 Ytrain_fit = tf.placeholder(tf.float32, shape=(nx,ntrain))
 Ytest_fit  = tf.placeholder(tf.float32, shape=(nx,ntest))
 
-# sample weights and biases
-
-w0train = tf.get_variable('w0train',(1,ntrain),
-              initializer = tf.random_normal_initializer)
-b0train = tf.get_variable('b0train',(1,ntrain),
-              initializer=tf.constant_initializer(0.0))
-w0test  = tf.get_variable('w0test',(1,ntest),
-              initializer = tf.random_normal_initializer)
-b0test  = tf.get_variable('b0test',(1,ntest),
-              initializer=tf.constant_initializer(0.0))
+# # sample weights and biases
+#
+# w0train = tf.get_variable('w0train',(1,ntrain),
+#              initializer = tf.random_normal_initializer)
+# b0train = tf.get_variable('b0train',(1,ntrain),
+#              initializer=tf.constant_initializer(0.0))
+# w0test  = tf.get_variable('w0test',(1,ntest),
+#              initializer = tf.random_normal_initializer)
+# b0test  = tf.get_variable('b0test',(1,ntest),
+#              initializer=tf.constant_initializer(0.0))
 
 # NN weights and biases
 
@@ -95,16 +101,25 @@ B = tf.get_variable('B',(nfunc,1),
               initializer=tf.constant_initializer(0.0))
 
 def myNNfunc(YY,W,B,w0,b0):
+  # YY(nx,nvec)
   
-  Y0 = YY * w0 + b0;
+  # Y0 = YY * w0 + b0;
+
+  # nvec = YY.shape[1]
+  # ymean = tf.reshape(tf.reduce_sum(YY,axis=0),(1,nvec)) / nx
+  # ydev =  tf.sqrt(tf.reshape(tf.reduce_sum((YY-ymean)**2,axis=0),(1,nvec)) / nx)
+  # Y0 = ( YY - ymean ) / ydev
+
+  Y0 = YY
 
   Q = tf.matmul(W,Y0) + B
   F = tf.sigmoid(Q)
   return F
 
+
 ######      TRAIN    ######
 
-Ftrain_NN = myNNfunc(Ytrain_fit,W,B,w0train,b0train)
+Ftrain_NN = myNNfunc(Ytrain_fit,W,B,1,0)
 
 # error for each sample
 train_lossper = tf.reshape(
@@ -116,9 +131,9 @@ OPT_train = tf.train.AdamOptimizer().minimize(train_LOSS)
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
 
-  for _ in range(1000):
+  for _ in range(20000):
     
-    _, train_loss_, train_lossper_, Ftrain_NN_, W_, B_ = sess.run(
+    _, train_loss_, train_lossper_, Ftrain_NN_, Wtrain_, Btrain_ = sess.run(
       [OPT_train,train_LOSS,train_lossper,Ftrain_NN,W,B],
       feed_dict={Ytrain_fit:ytrain_actual,Ftrain_fit:ftrain_actual})
     print('loss: %s '%(train_loss_))
@@ -136,4 +151,39 @@ print(np.array2string(np.transpose(np.concatenate(
 plt.scatter(trainindex,train_lossper_)
 plt.show()
 plt.scatter(functype_train[trainindex],train_lossper_)
+plt.show()
+
+
+######      TEST    ######
+
+
+Wtrain_ = np.double(Wtrain_)
+Btrain_ = np.double(Btrain_)
+
+Ftest_NN = myNNfunc(ytest_actual,Wtrain_,Btrain_,1,0)
+
+# exit()
+
+with tf.Session() as sess:
+  sess.run(tf.global_variables_initializer())
+  Ftest_NN_ = sess.run(Ftest_NN)
+
+Ftest_NN_ = np.array(Ftest_NN_)
+
+testindex = np.arange(ntest);
+testindex = np.reshape(testindex,(1,ntest))
+
+test_errorper = np.reshape(
+  np.sum((ftest_actual-Ftest_NN_)**2,axis=0),(1,ntest))
+
+besttest = np.reshape(np.argmax(Ftest_NN_,axis=0),(1,ntest))
+
+print('TEST: actual, bestguess,error')
+print(np.array2string(np.transpose(np.concatenate(
+  (functype_test[testindex], besttest, test_errorper))),
+  formatter={'float_kind':lambda x: '%.4f' % x}))
+
+plt.scatter(testindex,test_errorper)
+plt.show()
+plt.scatter(functype_test[testindex],test_errorper)
 plt.show()
