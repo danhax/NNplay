@@ -72,11 +72,14 @@ ytest_actual  = getdata(functype_test)
 #   plt.scatter(xdata,ytrain_actual[:,ivec])
 # plt.show()
 
-convlen = 1;
+convlen = 2;
 
 nc = nx + 1 - convlen;
 
 convnum = 1;
+
+
+##### DO TENSORFLOW
 
 def myconv(inp,C):
 
@@ -84,31 +87,21 @@ def myconv(inp,C):
   #          C   convlen,1,nconv)
   # have
   # inp(inlen,nvec)
-  # C(convlen,nconv)
+  # C(convlen,convnum)
   # outp(inlen+1-convlen,nvec,nconv)
 
-  inlen = inp.shape[0]
   nvec = inp.shape[1]
-  convlen = C.shape[0]
-  nconv = C.shape[1]
-  
-  outlen  = inlen + 1 - convlen
-  
-  inp=tf.reshape(tf.transpose(inp),(nvec,inlen,1))
-  C  =tf.reshape(C,                (convlen,1,nconv))
 
-  outp = tf.nn.conv1d(inp,C,1,'SAME')
-  # have outp(nvec, outlen, nconv)
+  inp=tf.reshape(tf.transpose(inp),(nvec,nx,1))
+  C  =tf.reshape(C,                (convlen,1,convnum))
+
+  outp = tf.nn.conv1d(inp,C,1,'VALID')
+  # have outp(nvec, nc, convnum)
+  
   outp = tf.transpose(outp,perm=[1,0,2])
-  # now have outp(outlen,nvec,nconv)
-
-  # print(outp.shape)
-  # print([outlen,nvec,nconv])
+  # now have outp(nc,nvec,convnum)
 
   return outp
-
-
-##### DO TENSORFLOW
 
 # output to fit for training
 Ftrain_fit = tf.placeholder(tf.float64, shape=(nfunc,ntrain))
@@ -135,7 +128,8 @@ C = tf.get_variable('C',(convlen,convnum),
 def myNNfunc(YY,W,B,C):
   # YY(nx,nvec)
   nvec = YY.shape[1]
-  
+
+  # Y0(nc,nvec,convnum)
   Y0 = myconv(YY,C)
 
   Q1 = 0;
