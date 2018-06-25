@@ -95,42 +95,17 @@ B = tf.get_variable('B',(nfunc,1),
 
 npolywts = 3;
 
-def myNNfunc(YY,W,B,ww):
-  # YY(nx,nvec)
-  # W(nfunc,nx)  B(nfunc,1)
-  # ww(npolywts,nvec)
+def myNNfunc(YY,W,B):
 
-  nvec = YY.shape[1];
-  Y0 = tf.reshape(ww[0,:],[1,nvec]) + \
-       tf.reshape(ww[1,:],[1,nvec]) * YY + \
-       tf.reshape(ww[2,:],[1,nvec]) * YY**2
+  Y0 = YY
 
   Q1 = tf.matmul(W,Y0) + B
   F1 = tf.sigmoid(Q1)
   return F1
 
-#### SAMPLE TRAIN PARAMS
-
-# sample polynomial weights
-
-doSampleFit = True
-
-if doSampleFit:
-  wtrain = tf.get_variable('wtrain',(npolywts,ntrain),
-           dtype=tf.float64,
-           initializer = tf.random_normal_initializer)
-  wtest  = tf.get_variable('wtest',(npolywts,ntest),
-           dtype=tf.float64,
-           initializer = tf.random_normal_initializer)
-else:
-  wtrain = np.array([[0],[1],[0]])*np.ones([1,ntrain])
-  wtest  = np.array([[0],[1],[0]])*np.ones([1,ntest])
-
-# print(wtrain[0,:].reshape(1,ntrain).shape)
-
 ######      TRAIN    ######
 
-Ftrain_NN = myNNfunc(Ytrain_fit,W,B,wtrain)
+Ftrain_NN = myNNfunc(Ytrain_fit,W,B)
 
 # error for each sample
 train_lossper = tf.reshape(
@@ -170,33 +145,10 @@ plt.show()
 
 ######      TEST    ######
 
-
-if not doSampleFit:
-
-  Ftest_NN = myNNfunc(ytest_actual,Wtrain_,Btrain_,wtest)
-  with tf.Session() as sess:
-    sess.run(tf.global_variables_initializer())
-    Ftest_NN_ = sess.run(Ftest_NN)
-
-else:
-
-  Ftest_NN = myNNfunc(Ytest_fit,Wtrain_,Btrain_,wtest)
-  # error for each sample
-  test_lossper = tf.reshape(
-    tf.reduce_sum((Ftest_NN-1)**2*Ftest_NN**2,axis=0),(1,ntest))
-  # summed over samples
-  test_LOSS = tf.reduce_sum(test_lossper);
-  OPT_test = tf.train.AdamOptimizer().minimize(test_LOSS)
-
-  with tf.Session() as sess:
-    sess.run(tf.global_variables_initializer())
-
-    for _ in range(2000):
-    
-      _, test_loss_, test_lossper_, Ftest_NN_ = sess.run(
-        [OPT_test,test_LOSS,test_lossper,Ftest_NN]
-        ,feed_dict={Ytest_fit:ytest_actual})
-      print('loss: %s '%(test_loss_))
+Ftest_NN = myNNfunc(ytest_actual,Wtrain_,Btrain_)
+with tf.Session() as sess:
+  sess.run(tf.global_variables_initializer())
+  Ftest_NN_ = sess.run(Ftest_NN)
 
 Ftest_NN_ = np.array(Ftest_NN_)
 
