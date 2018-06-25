@@ -91,10 +91,11 @@ def myconv(inp,C):
 
   # want NWC inp(nvec, inlen, 1)    nbatch=nvec  width=inlen
   #          C   convlen,1,nconv)
-  # have
-  # inp(inlen,nvec)
-  # C(convlen,convnum)
-  # outp(inlen+1-convlen,nvec,nconv)
+  # input
+  #   inp(nx,nvec)
+  #   C(convlen,convnum)
+  # output
+  #   outp(nc,nvec,convnum)
 
   nvec = inp.shape[1]
 
