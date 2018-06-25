@@ -72,7 +72,25 @@ ytest_actual  = getdata(functype_test)
 #   plt.scatter(xdata,ytrain_actual[:,ivec])
 # plt.show()
 
+convlen = 2;
 
+nc = nx + 1 - convlen;
+
+convnum = 1;
+
+def myconv(inp,C):
+  # inp(inlen,1)
+  # C(convlen,nconv)
+  # outp(veclen+1-convlen,nconv)
+  inlen = len(inp)
+  convlen = C.shape[0]
+  nconv = C.shape[1]
+  outlen = inlen + 1 - convlen
+  outp = np.zeros([outlen,nconv]);
+  for iconv in range(nconv):
+    for ilen in range(convlen):
+      outp[:,iconv] = outp[:,iconv] + \
+                      inp[1+iconv : outlen+iconv] * C[ilen,iconv]
 
 ##### DO TENSORFLOW
 
@@ -80,7 +98,6 @@ ytest_actual  = getdata(functype_test)
 Ftrain_fit = tf.placeholder(tf.float64, shape=(nfunc,ntrain))
 # input
 Ytrain_fit = tf.placeholder(tf.float64, shape=(nx,ntrain))
-Ytest_fit  = tf.placeholder(tf.float64, shape=(nx,ntest))
 
 # NN weights and biases
 
@@ -90,6 +107,10 @@ W = tf.get_variable('W',(nfunc,nx),
 B = tf.get_variable('B',(nfunc,1),
               dtype=tf.float64,
               initializer=tf.constant_initializer(0.0))
+
+C = tf.get_variable('C',(convlen,convnum),
+              dtype=tf.float64,
+              initializer = tf.random_normal_initializer)
 
 ##############
 
