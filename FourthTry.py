@@ -4,13 +4,13 @@
 
 xrange     = 4
 nper       = 10
-ntrain    = 1000
+ntrain    = 500
 ntest     = 20
 
-convlen = 10
-convnum = 3
+convlen = 7
+convnum = 7
 
-nTrainSteps = 10000
+nTrainSteps = 2000
 
 ##############################
 
@@ -120,10 +120,10 @@ Ytrain_fit = tf.placeholder(tf.float64, shape=(nx,ntrain))
 
 # weights, linear transformation W(nfunc,nc) for each convnum
 #
-W = tf.get_variable('W',(nfunc,nc,convnum),
+W = tf.get_variable('W',(nfunc,convnum),
               dtype=tf.float64,
               initializer = tf.random_normal_initializer)
-B = tf.get_variable('B',(nfunc,convnum),
+B = tf.get_variable('B',(nfunc,1),
               dtype=tf.float64,
               initializer=tf.constant_initializer(0.0))
 C = tf.get_variable('C',(convlen,convnum),
@@ -134,17 +134,28 @@ C = tf.get_variable('C',(convlen,convnum),
 
 def myNNfunc(YY,W,B,C):
   # YY(nx,nvec)
+  # W(nfunc,convnum)
+  # B(nfunc,1)
+  # C(convlen,convnum)
+  # out(nfunc,nvec)     0 to 1
+  
   nvec = YY.shape[1]
 
   # Y0(nc,nvec,convnum)
   Y0 = myconv(YY,C)
 
-  Q1 = 0;
-  for iconv in range(convnum):
-    Q1 = Q1 + tf.matmul(tf.reshape(W[:,:,iconv],(nfunc,nc)),
-                        tf.reshape(Y0[:,:,iconv],(nc,nvec))) \
-         + tf.reshape(B[:,iconv],(nfunc,1))
-  F1 = tf.sigmoid(Q1)
+  # Q1(nc,nvec,nfunc)
+  Q1 = ( tf.tensordot(Y0,tf.transpose(W),axes=((2),(0)))
+       )  #  + tf.reshape(B,(1,1,nfunc))
+
+  # N1(nvec,nfunc)       norm-squared
+  N1 = tf.reshape(tf.reduce_sum(Q1,axis=0),(nvec,nfunc))
+
+  # N1(nfunc,nvec)       norm-squared
+  N1 = tf.transpose(N1)
+
+  # F1 = 1/(1+1/N1)
+  F1 = tf.sigmoid( N1 + B )
   return F1
 
 ######      TRAIN    ######
@@ -153,7 +164,9 @@ Ftrain_NN = myNNfunc(Ytrain_fit,W,B,C)
 
 # error for each sample
 train_lossper = tf.reshape(
-  tf.reduce_sum((Ftrain_fit-Ftrain_NN)**2,axis=0),(1,ntrain))
+  tf.reduce_sum(tf.abs(Ftrain_fit-Ftrain_NN),axis=0),(1,ntrain))
+#  tf.reduce_sum((Ftrain_fit-Ftrain_NN)**2,axis=0),(1,ntrain))
+
 # summed over samples
 train_LOSS = tf.reduce_sum(train_lossper);
 OPT_train = tf.train.AdamOptimizer().minimize(train_LOSS)
