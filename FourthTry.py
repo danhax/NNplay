@@ -7,10 +7,10 @@ nper       = 10
 ntrain    = 500
 ntest     = 20
 
-convlen = 7
-convnum = 7
+convlen = 20
+convnum = 5
 
-nTrainSteps = 2000
+nTrainSteps = 100000
 
 ##############################
 
@@ -120,23 +120,27 @@ Ytrain_fit = tf.placeholder(tf.float64, shape=(nx,ntrain))
 
 # weights, linear transformation W(nfunc,nc) for each convnum
 #
+C = tf.get_variable('C',(convlen,convnum),
+              dtype=tf.float64,
+              initializer = tf.random_normal_initializer)
 W = tf.get_variable('W',(nfunc,convnum),
+              dtype=tf.float64,
+              initializer = tf.random_normal_initializer)
+D = tf.get_variable('D',(nc,nfunc),
               dtype=tf.float64,
               initializer = tf.random_normal_initializer)
 B = tf.get_variable('B',(nfunc,1),
               dtype=tf.float64,
               initializer=tf.constant_initializer(0.0))
-C = tf.get_variable('C',(convlen,convnum),
-              dtype=tf.float64,
-              initializer = tf.random_normal_initializer)
 
 ##############
 
-def myNNfunc(YY,W,B,C):
+def myNNfunc(YY,C,W,D,B):
   # YY(nx,nvec)
-  # W(nfunc,convnum)
-  # B(nfunc,1)
-  # C(convlen,convnum)
+  # C(convlen,convnum)    convolve YY
+  # W(nfunc,convnum)      linear transform
+  # D(nc,nfunc)           pixel contraction
+  # B(nfunc,1)            constant term
   # out(nfunc,nvec)     0 to 1
   
   nvec = YY.shape[1]
@@ -149,7 +153,8 @@ def myNNfunc(YY,W,B,C):
        )  #  + tf.reshape(B,(1,1,nfunc))
 
   # N1(nvec,nfunc)       norm-squared
-  N1 = tf.reshape(tf.reduce_sum(Q1,axis=0),(nvec,nfunc))
+  D = tf.reshape(D,(nc,1,nfunc));
+  N1 = tf.reshape(tf.reduce_sum(Q1*D,axis=0),(nvec,nfunc))
 
   # N1(nfunc,nvec)       norm-squared
   N1 = tf.transpose(N1)
@@ -160,7 +165,7 @@ def myNNfunc(YY,W,B,C):
 
 ######      TRAIN    ######
 
-Ftrain_NN = myNNfunc(Ytrain_fit,W,B,C)
+Ftrain_NN = myNNfunc(Ytrain_fit,C,W,D,B)
 
 # error for each sample
 train_lossper = tf.reshape(
@@ -176,14 +181,16 @@ with tf.Session() as sess:
 
   for _ in range(nTrainSteps):
     
-    _, train_loss_, train_lossper_, Ftrain_NN_, W_, B_, C_ = sess.run(
-      [OPT_train,train_LOSS,train_lossper,Ftrain_NN,W,B,C]
+    _, train_loss_, train_lossper_, \
+      Ftrain_NN_, C_, W_, D_, B_ = sess.run(
+      [OPT_train,train_LOSS,train_lossper,Ftrain_NN,C,W,D,B]
       ,feed_dict={Ytrain_fit:ytrain_actual,Ftrain_fit:ftrain_actual})
     print('loss: %s '%(train_loss_))
 
-W_ = np.array(W_)
-B_ = np.array(B_)
 C_ = np.array(C_)
+W_ = np.array(W_)
+D_ = np.array(D_)
+B_ = np.array(B_)
 
 trainindex = np.arange(ntrain);
 trainindex = np.reshape(trainindex,(1,ntrain))
@@ -203,7 +210,7 @@ plt.show()
 
 ######      TEST    ######
 
-Ftest_NN = myNNfunc(ytest_actual,W_,B_,C_)
+Ftest_NN = myNNfunc(ytest_actual,C_,W_,D_,B_)
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
   Ftest_NN_ = sess.run(Ftest_NN)
