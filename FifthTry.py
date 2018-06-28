@@ -7,10 +7,12 @@ nper       = 10
 ntrain    = 500
 ntest     = 20
 
-convlen = 20
-convnum = 5
-
+clen = 20
+cnum = 5
+mnum = 1
 nTrainSteps = 100000
+
+nterm = mnum**cnum
 
 ##############################
 
@@ -20,9 +22,9 @@ import matplotlib.pyplot as plt
 
 ###### x-values at which to evaluate the functions
 
-nx = xrange * nper
+nx    = xrange * nper
 xdata = np.arange(xrange*nper)/nper
-xdata = np.reshape(xdata,(nx,1));
+xdata = np.reshape(xdata,(nx,1))
 
 ######  positive-valued functions
 
@@ -83,30 +85,30 @@ ytest_actual  = getdata(functype_test)
 
 #####   OKAY.  convolution size:
 
-nc = nx + 1 - convlen;
+nc = nx + 1 - clen;
 
 #####   DO TENSORFLOW
 
 def myconv(inp,C):
 
   # want NWC inp(nvec, inlen, 1)    nbatch=nvec  width=inlen
-  #          C   convlen,1,nconv)
+  #          C   clen,1,cnum)
   # input
   #   inp(nx,nvec)
-  #   C(convlen,convnum)
+  #   C(clen,cnum)
   # output
-  #   outp(nc,nvec,convnum)
+  #   outp(nc,nvec,cnum)
 
   nvec = inp.shape[1]
 
   inp=tf.reshape(tf.transpose(inp),(nvec,nx,1))
-  C  =tf.reshape(C,                (convlen,1,convnum))
+  C  =tf.reshape(C,                (clen,1,cnum))
 
   outp = tf.nn.conv1d(inp,C,1,'VALID')
-  # have outp(nvec, nc, convnum)
+  # have outp(nvec, nc, cnum)
   
   outp = tf.transpose(outp,perm=[1,0,2])
-  # now have outp(nc,nvec,convnum)
+  # now have outp(nc,nvec,cnum)
 
   return outp
 
@@ -116,56 +118,60 @@ Ftrain_fit = tf.placeholder(tf.float64, shape=(nfunc,ntrain))
 # input
 Ytrain_fit = tf.placeholder(tf.float64, shape=(nx,ntrain))
 
-# NN weights and biases
-
-# weights, linear transformation W(nfunc,nc) for each convnum
 #
-C = tf.get_variable('C',(convlen,convnum),
+# NN PARAMETERS TO TRAIN
+#
+C = tf.get_variable('C',(clen,cnum),
               dtype=tf.float64,
               initializer = tf.random_normal_initializer)
-W = tf.get_variable('W',(nfunc,convnum),
+W = tf.get_variable('W',(nterm,nfunc),
               dtype=tf.float64,
               initializer = tf.random_normal_initializer)
-D = tf.get_variable('D',(nc,nfunc),
-              dtype=tf.float64,
-              initializer = tf.random_normal_initializer)
-B = tf.get_variable('B',(nfunc,1),
-              dtype=tf.float64,
-              initializer=tf.constant_initializer(0.0))
 
 ##############
 
-def myNNfunc(YY,C,W,D,B):
-  # YY(nx,nvec)
-  # C(convlen,convnum)    convolve YY
-  # W(nfunc,convnum)      linear transform
-  # D(nc,nfunc)           pixel contraction
-  # B(nfunc,1)            constant term
-  # out(nfunc,nvec)     0 to 1
+def myNNfunc(Im,C,W):
+  # Im(nx,nvec)
+  # C(clen,cnum)         convolve Im
+  # W(mnum**cnum,nfunc)   linear transform polynomials to response functions
+  #                          nterm = mnum**cnum
+  # out(nfunc,nvec)      0 to 1
   
-  nvec = YY.shape[1]
+  nvec = Im.shape[1]
 
-  # Y0(nc,nvec,convnum)
-  Y0 = myconv(YY,C)
+  # Conved(nc,nvec,cnum)
+  Conved = myconv(Im,C)
 
-  # Q1(nc,nvec,nfunc)
-  Q1 = ( tf.tensordot(Y0,tf.transpose(W),axes=((2),(0)))
-       )  #  + tf.reshape(B,(1,1,nfunc))
+  # Mon(nc,nvec,cnum,mnum)
+  Mon = tf.reshape(Conved,(nc,nvec,cnum,1)) ** \
+        tf.reshape(tf.range(mnum),(1,1,1,mnum))
 
-  # N1(nvec,nfunc)       norm-squared
-  D = tf.reshape(D,(nc,1,nfunc));
-  N1 = tf.reshape(tf.reduce_sum(Q1*D,axis=0),(nvec,nfunc))
+  print(Conved.dtype)
 
-  # N1(nfunc,nvec)       norm-squared
-  N1 = tf.transpose(N1)
+  # nterm = mnum**cnum
+  Term = tf.ones((nc,nvec,nterm),dtype='float64');
+  for iterm in range(nterm):
+    jterm = iterm
+    for iconv in range(cnum):
+      imon = tf.cast(tf.mod(jterm,mnum),tf.double)
+      jterm = (jterm - imon)/mnum
+      Term[:,:,iterm] = Term[:,:,iterm] * Mon[:,:,iconv,imon]
+      
+  # Poly(nc,nvec,nfunc)
+  Poly = tf.reshape(tf.matmul(
+    tf.reshape(Term,(nc*nvec,nterm)),W), (nc,nvec,nfunc));
 
-  # F1 = 1/(1+1/N1)
-  F1 = tf.sigmoid( N1 + B )
-  return F1
+  Sigmoid = tf.sigmoid(Poly)
+
+  Avg = tf.reshape(tf.reduce_mean(Sigmoid,axis=0),(nvec,nfunc))
+  # Avg(nfunc,nvec)
+  Avg = tf.transpose(Avg)
+  return Avg
+
 
 ######      TRAIN    ######
 
-Ftrain_NN = myNNfunc(Ytrain_fit,C,W,D,B)
+Ftrain_NN = myNNfunc(Ytrain_fit,C,W)
 
 # error for each sample
 train_lossper = tf.reshape(
@@ -182,15 +188,13 @@ with tf.Session() as sess:
   for _ in range(nTrainSteps):
     
     _, train_loss_, train_lossper_, \
-      Ftrain_NN_, C_, W_, D_, B_ = sess.run(
-      [OPT_train,train_LOSS,train_lossper,Ftrain_NN,C,W,D,B]
+      Ftrain_NN_, C_, W_ = sess.run(
+      [OPT_train,train_LOSS,train_lossper,Ftrain_NN,C,W]
       ,feed_dict={Ytrain_fit:ytrain_actual,Ftrain_fit:ftrain_actual})
     print('loss: %s '%(train_loss_))
 
 C_ = np.array(C_)
 W_ = np.array(W_)
-D_ = np.array(D_)
-B_ = np.array(B_)
 
 trainindex = np.arange(ntrain);
 trainindex = np.reshape(trainindex,(1,ntrain))
@@ -210,7 +214,7 @@ plt.show()
 
 ######      TEST    ######
 
-Ftest_NN = myNNfunc(ytest_actual,C_,W_,D_,B_)
+Ftest_NN = myNNfunc(ytest_actual,C_,W_)
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
   Ftest_NN_ = sess.run(Ftest_NN)
