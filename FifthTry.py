@@ -7,10 +7,10 @@ nper       = 10
 ntrain    = 500
 ntest     = 20
 
-clen = 10
-cnum = 3            # number of convolutions
-mnum = 3            # highest power each convolution
-nTrainSteps = 1000
+clen = 40
+cnum = 2            # number of convolutions
+mnum = 2            # highest power each convolution
+nTrainSteps = 10000
 
 nterm = mnum**cnum  # total number of polynomial terms
 
@@ -131,9 +131,14 @@ Ytrain_fit = tf.placeholder(tf.float64, shape=(nx,ntrain))
 C = tf.get_variable('C',(clen,cnum),
               dtype=tf.float64,
               initializer = tf.random_normal_initializer)
-W = tf.get_variable('W',(nterm,nfunc),
-              dtype=tf.float64,
-              initializer = tf.random_normal_initializer)
+tt = np.zeros((nterm,1))
+tt[0,0] = 1
+Winit = tt * np.ones(nfunc)
+# W = tf.get_variable('W',(nterm,nfunc),
+#               dtype=tf.float64,
+#               initializer = tf.random_normal_initializer)
+W = tf.get_variable('W',dtype=tf.float64,
+              initializer = tf.constant(Winit))
 
 ##############
 
@@ -156,7 +161,7 @@ def myNNfunc(Im,C,W):
   # Terms(nc,nvec,nterm)
   Terms = tf.reshape( Terms, (nc,nvec,nterm) )
 
-  # W(nterm,nfunc)  ->  Poly(nc,nvec,nfuc)
+  # W(nterm,nfunc)  ->  Poly(nc,nvec,nfunc)
   Poly = tf.tensordot(Terms,W,axes=((2),(0)))
   
   Sigmoid = tf.sigmoid(Poly)
@@ -207,7 +212,6 @@ plt.scatter(trainindex,train_lossper_)
 plt.show()
 plt.scatter(functype_train[trainindex],train_lossper_)
 plt.show()
-
 
 ######      TEST    ######
 
