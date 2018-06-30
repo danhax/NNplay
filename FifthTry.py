@@ -7,18 +7,25 @@ nper       = 10
 ntrain    = 500
 ntest     = 20
 
-clen = 20
-cnum = 5
-mnum = 1
-nTrainSteps = 20
+clen = 10
+cnum = 3            # number of convolutions
+mnum = 3            # highest power each convolution
+nTrainSteps = 1000
 
-nterm = mnum**cnum
+nterm = mnum**cnum  # total number of polynomial terms
 
 ##############################
 
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
+
+###### constants
+
+# MonPwr(cnum,nterm)
+MonPwr = np.mod( np.floor(
+  np.reshape( np.arange(nterm),     (1,nterm) ) /
+  np.reshape( mnum**np.arange(cnum), (cnum,1) ) ), mnum)
 
 ###### x-values at which to evaluate the functions
 
@@ -130,11 +137,6 @@ W = tf.get_variable('W',(nterm,nfunc),
 
 ##############
 
-# MonPwr(cnum,nterm)
-MonPwr = tf.mod( tf.floor(
-  tf.reshape( tf.range(nterm),     (1,nterm) ) /
-  tf.reshape( mnum**tf.range(cnum), (cnum,1) ) ), mnum)
-
 def myNNfunc(Im,C,W):
   # Im(nx,nvec)
   # C(clen,cnum)         convolve Im
@@ -180,13 +182,13 @@ OPT_train = tf.train.AdamOptimizer().minimize(train_LOSS)
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
 
-  for _ in range(nTrainSteps):
+  for istep in range(nTrainSteps):
     
     _, train_loss_, train_lossper_, \
       Ftrain_NN_, C_, W_ = sess.run(
       [OPT_train,train_LOSS,train_lossper,Ftrain_NN,C,W]
       ,feed_dict={Ytrain_fit:ytrain_actual,Ftrain_fit:ftrain_actual})
-    print('loss: %s '%(train_loss_))
+    print('loss: %s  step %i of %i'%(train_loss_,istep,nTrainSteps))
 
 C_ = np.array(C_)
 W_ = np.array(W_)
