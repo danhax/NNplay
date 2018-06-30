@@ -142,32 +142,27 @@ def myNNfunc(Im,C,W):
   # Conved(nc,nvec,cnum)
   Conved = myconv(Im,C)
 
-  # Mon(nc,nvec,cnum,mnum)
-  Mon = tf.reshape(Conved,(nc,nvec,cnum,1)) ** \
-        tf.reshape(tf.range(mnum),(1,1,1,mnum))
+  # MonPwr(cnum,nterm)
+  MonPwr = tf.mod( tf.floor(
+    tf.reshape( tf.range(nterm),     (1,nterm) ) /
+    tf.reshape( mnum**tf.range(cnum), (cnum,1) ) ), mnum)
 
-  print(Conved.dtype)
+  Terms = tf.reduce_sum(
+    tf.reshape(Conved,(nc,nvec,cnum,1)) ** \
+    tf.reshape(MonPwr,(1,1,cnum,nterm)), axis=(2))
 
-  # nterm = mnum**cnum
-  Term = tf.ones((nc,nvec,nterm),dtype='float64');
-  for iterm in range(nterm):
-    jterm = iterm
-    for iconv in range(cnum):
-      imon = tf.cast(tf.mod(jterm,mnum),tf.double)
-      jterm = (jterm - imon)/mnum
-      Term[:,:,iterm] = Term[:,:,iterm] * Mon[:,:,iconv,imon]
-      
-  # Poly(nc,nvec,nfunc)
-  Poly = tf.reshape(tf.matmul(
-    tf.reshape(Term,(nc*nvec,nterm)),W), (nc,nvec,nfunc));
+  # Terms(nc,nvec,nterm)
+  Terms = tf.reshape( Terms, (nc,nvec,nterm) )
 
+  # W(nterm,nfunc)  ->  Poly(nc,nvec,nfuc)
+  Poly = tf.tensordot(Terms,W,axes=((2),(0)))
+  
   Sigmoid = tf.sigmoid(Poly)
-
+  
   Avg = tf.reshape(tf.reduce_mean(Sigmoid,axis=0),(nvec,nfunc))
   # Avg(nfunc,nvec)
   Avg = tf.transpose(Avg)
   return Avg
-
 
 ######      TRAIN    ######
 
