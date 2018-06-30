@@ -10,7 +10,7 @@ ntest     = 20
 clen = 20
 cnum = 5
 mnum = 1
-nTrainSteps = 100000
+nTrainSteps = 20
 
 nterm = mnum**cnum
 
@@ -130,6 +130,11 @@ W = tf.get_variable('W',(nterm,nfunc),
 
 ##############
 
+# MonPwr(cnum,nterm)
+MonPwr = tf.mod( tf.floor(
+  tf.reshape( tf.range(nterm),     (1,nterm) ) /
+  tf.reshape( mnum**tf.range(cnum), (cnum,1) ) ), mnum)
+
 def myNNfunc(Im,C,W):
   # Im(nx,nvec)
   # C(clen,cnum)         convolve Im
@@ -141,11 +146,6 @@ def myNNfunc(Im,C,W):
 
   # Conved(nc,nvec,cnum)
   Conved = myconv(Im,C)
-
-  # MonPwr(cnum,nterm)
-  MonPwr = tf.mod( tf.floor(
-    tf.reshape( tf.range(nterm),     (1,nterm) ) /
-    tf.reshape( mnum**tf.range(cnum), (cnum,1) ) ), mnum)
 
   Terms = tf.reduce_sum(
     tf.reshape(Conved,(nc,nvec,cnum,1)) ** \
