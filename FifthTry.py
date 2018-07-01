@@ -4,8 +4,8 @@
 
 xrange     = 4
 nper       = 10
-ntrain    = 2000
-ntest     = 2000
+ntrain    = 10000
+ntest     = 10000
 
 nTrainSteps = 10000
 
@@ -15,7 +15,7 @@ clen = 40
 
 NUMC = 2            # number of convolutions
 NUMM = 2            # highest power each convolution plus one
-NUMP = 5            # number of polynomials before relu
+NUMP = 20          # number of polynomials before relu
 
 startC = NUMC
 startM = NUMM
@@ -187,6 +187,8 @@ def myNNfunc(Im,inC,inT,inW,cnum,mnum,pnum):
 
   Poly = tf.nn.relu(Poly)
 
+  # Poly = tf.abs(Poly)
+  
   # W(pnum,nfunc)  ->  Func(nc,nvec,nfunc)
 
   Func = tf.tensordot(Poly,inW,axes=((2),(0)))  
@@ -240,7 +242,7 @@ def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
       functype_train,tf.transpose(Ftrain_NN))
 
   OPT_train = tf.train.AdamOptimizer(
-    learning_rate=0.001,beta1=0.0,beta2=0.0,epsilon=1e-8
+    learning_rate=0.001,beta1=0.9,beta2=0.9,epsilon=1e-8
     ).minimize(train_LOSS)
 
   # OPT_train = tf.train.GradientDescentOptimizer(
