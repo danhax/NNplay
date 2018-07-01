@@ -11,6 +11,16 @@ nTrainSteps = 10000
 
 clen = 39
 
+###
+
+NUMC = 2            # number of convolutions
+NUMM = 2            # highest power each convolution plus one
+NUMP = 5            # number of polynomials before relu
+
+startC = NUMC-1
+startM = NUMM-1
+startP = NUMP-1
+
 ##############################
 
 import tensorflow as tf
@@ -167,35 +177,20 @@ def myNNfunc(Im,C,T,W,cnum,mnum,pnum):
 # NN PARAMETERS TO TRAIN
 #
 
-cnum = 2            # number of convolutions
-mnum = 2            # highest power each convolution plus one
-pnum = 2            # number of polynomials before relu
+Cfinal = 0
+Tfinal = 0
+Wfinal = 0
 
-def DOIT(cnum,mnum,pnum):
+def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
 
   nterm = mnum**cnum  # total number of polynomial terms
 
-  C = tf.get_variable('C', dtype=tf.float64,
-                shape=(clen,cnum),
-                initializer = tf.random_normal_initializer)
-  #          initializer = tf.zeros((clen,cnum),dtype=tf.float64))
-  
+  C = tf.get_variable('C',dtype=tf.float64,
+         initializer = tf.constant(Cinit))
   T = tf.get_variable('T',dtype=tf.float64,
-                shape=(nterm,pnum),
-                initializer = tf.random_normal_initializer)
-  #          initializer = tf.zeros((nterm,pnum),dtype=tf.float64))
-  
-  W = tf.get_variable('W',(pnum,nfunc),
-                dtype=tf.float64,
-                initializer = tf.random_normal_initializer)
-
-  # tt = np.zeros((nterm,1))
-  # tt[0,0] = 1
-  # Winit = tt * np.ones(nfunc)
-  # W = tf.get_variable('W',dtype=tf.float64,
-  #        initializer = tf.constant(Winit))
-  # #        initializer = tf.zeros((nterm,nfunc),dtype=tf.float64))
-
+         initializer = tf.constant(Tinit))
+  W = tf.get_variable('W',dtype=tf.float64,
+         initializer = tf.constant(Winit))
 
   ######      TRAIN    ######
 
@@ -204,8 +199,8 @@ def DOIT(cnum,mnum,pnum):
   if 1==1:
     # error for each sample
     train_lossper = tf.reshape(
-      tf.reduce_sum(tf.abs(Ftrain_fit-Ftrain_NN),axis=0),(1,ntrain))
-    #  tf.reduce_sum((Ftrain_fit-Ftrain_NN)**2,axis=0),(1,ntrain))
+    #  tf.reduce_sum(tf.abs(Ftrain_fit-Ftrain_NN),axis=0),(1,ntrain))
+      tf.reduce_sum((Ftrain_fit-Ftrain_NN)**2,axis=0),(1,ntrain))
     # summed over samples
     train_LOSS = tf.reduce_mean(train_lossper);
   else:
@@ -277,8 +272,23 @@ def DOIT(cnum,mnum,pnum):
   plt.scatter(functype_test[testindex],test_errorper)
   plt.show()
 
+cnum = startC
+mnum = startM
+pnum = startP
 
-DOIT(cnum,mnum,pnum)
+flag = True
+while flag :
+  cnum = np.min((cnum+1,NUMC))
+  mnum = np.min((mnum+1,NUMM))
+  pnum = np.min((pnum+1,NUMP))
+  flag = cnum < NUMC or pnum < NUMP or mnum < NUMM
+  
+  nterm = mnum**cnum
+  Cinit = np.random.normal(np.zeros((clen,cnum)))
+  Tinit = np.random.normal(np.zeros((nterm,pnum)))
+  Winit = np.random.normal(np.zeros((pnum,nfunc)))
+  
+  DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit)
 
 exit()
 
