@@ -12,7 +12,7 @@ cnum = 2            # number of convolutions
 mnum = 2            # highest power each convolution
 pnum = 5            # number of polynomials before relu
 
-nTrainSteps = 50000
+nTrainSteps = 10000
 
 nterm = mnum**cnum  # total number of polynomial terms
 
@@ -185,15 +185,17 @@ def myNNfunc(Im,C,T,W):
   # W(pnum,nfunc)  ->  Func(nc,nvec,nfunc)
 
   Func = tf.tensordot(Poly,W,axes=((2),(0)))  
-    
-  Sigmoid = tf.nn.softmax(Func,2)
-  
-  Avg = tf.reshape(tf.reduce_mean(Sigmoid,axis=0),(nvec,nfunc))
-  
-  # Avg(nfunc,nvec)
-  Avg = tf.transpose(Avg)
 
-  return Avg
+  Sigmoid = tf.nn.softmax(Func,2)
+
+  Max = tf.reshape(tf.reduce_max(Sigmoid,axis=0),(nvec,nfunc))
+
+  # Max(nfunc,nvec)
+  Max = tf.transpose(Max)
+
+  return Max
+
+
 
 ######      TRAIN    ######
 
