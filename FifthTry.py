@@ -7,9 +7,9 @@ nper       = 10
 ntrain    = 2000
 ntest     = 2000
 
-nTrainSteps = 50000
+nTrainSteps = 10000
 
-clen = 39
+clen = 40
 
 ###
 
@@ -146,14 +146,17 @@ def getBasis(cnum,mnum) :
     np.reshape( np.arange(nterm),     (1,nterm) ) /
     np.reshape( mnum**np.arange(cnum), (cnum,1) ) ), mnum)
 
+  okmon = np.sum(MonPwr,0) < mnum
+  MonPwr = MonPwr[:,okmon]
+
+  nterm = MonPwr.shape[1]
   return nterm, MonPwr
 
-def myNNfunc(Im,C,T,W,cnum,mnum,pnum):
+def myNNfunc(Im,inC,inT,inW,cnum,mnum,pnum):
   # Im(nx,nvec)
   # C(clen,cnum)         convolve Im
-  # T(mnum**cnum,pnum)
+  # T(nterm,pnum)
   # W(pnum,nfunc)   linear transform polynomials to response functions
-  #                          nterm = mnum**cnum
   # out(nfunc,nvec)      0 to 1
   
   nvec = Im.shape[1]
@@ -162,7 +165,12 @@ def myNNfunc(Im,C,T,W,cnum,mnum,pnum):
   Im = Im / tf.sqrt(tf.reduce_sum(Im**2,axis=0))
 
   # Conved(nc,nvec,cnum)
-  Conved = myconv(Im,C)
+  Conved = myconv(Im,inC)
+  
+  # Conved = Conved - tf.reshape(
+  #   tf.reduce_mean(Conved,axis=(0)),(1,nvec,cnum))
+  # Conved = Conved / tf.reshape(
+  #   tf.sqrt(tf.reduce_sum(Conved**2,axis=(0))),(1,nvec,cnum))
 
   # MonPwr(cnum,nterm)
   nterm, MonPwr = getBasis(cnum,mnum)
@@ -175,13 +183,13 @@ def myNNfunc(Im,C,T,W,cnum,mnum,pnum):
   Terms = tf.reshape( Terms, (nc,nvec,nterm) )
 
   # T(nterm,pnum)  ->  Poly(nc,nvec,pnum)
-  Poly = tf.tensordot(Terms,T,axes=((2),(0)))
+  Poly = tf.tensordot(Terms,inT,axes=((2),(0)))
 
   Poly = tf.nn.relu(Poly)
 
   # W(pnum,nfunc)  ->  Func(nc,nvec,nfunc)
 
-  Func = tf.tensordot(Poly,W,axes=((2),(0)))  
+  Func = tf.tensordot(Poly,inW,axes=((2),(0)))  
 
   Sigmoid = tf.nn.softmax(Func,2)
 
@@ -201,14 +209,19 @@ def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
   # Tinit(nterm,pnum)
   # Winit(pnum,nfunc)
 
-  nterm = mnum**cnum  # total number of polynomial terms
+  nterm = getBasis(cnum,mnum)
 
-  C = tf.get_variable('C',dtype=tf.float64,
-         initializer = tf.constant(Cinit))
-  T = tf.get_variable('T',dtype=tf.float64,
-         initializer = tf.constant(Tinit))
-  W = tf.get_variable('W',dtype=tf.float64,
-         initializer = tf.constant(Winit))
+  C = tf.Variable(Cinit)
+  T = tf.Variable(Tinit)
+  W = tf.Variable(Winit)
+
+  #with tf.variable_scope('noog', reuse=tf.AUTO_REUSE):
+  #  C = tf.get_variable('C',dtype=tf.float64,
+  #       initializer = tf.constant(Cinit))
+  #  T = tf.get_variable('T',dtype=tf.float64,
+  #       initializer = tf.constant(Tinit))
+  #  W = tf.get_variable('W',dtype=tf.float64,
+  #       initializer = tf.constant(Winit))
 
   ######      TRAIN    ######
 
@@ -226,7 +239,9 @@ def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
     train_LOSS = tf.losses.sparse_softmax_cross_entropy(
       functype_train,tf.transpose(Ftrain_NN))
 
-  OPT_train = tf.train.AdamOptimizer().minimize(train_LOSS)
+  OPT_train = tf.train.AdamOptimizer(
+    learning_rate=0.001,beta1=0.0,beta2=0.0,epsilon=1e-8
+    ).minimize(train_LOSS)
 
   # OPT_train = tf.train.GradientDescentOptimizer(
   #   learning_rate=0.01).minimize(train_LOSS)
@@ -234,6 +249,11 @@ def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
   with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
 
+    train_loss_ = sess.run(
+      train_LOSS,
+      feed_dict={Ytrain_fit:ytrain_actual,Ftrain_fit:ftrain_actual})
+    print('LOSS: %s  step %i of %i'%(train_loss_,0,nTrainSteps))
+    
     for istep in range(nTrainSteps):
 
       _, train_loss_, train_lossper_, \
@@ -248,10 +268,10 @@ def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
 
   besttrain = np.reshape(np.argmax(Ftrain_NN_,axis=0),(1,ntrain))
 
-  print('TRAIN: actual, bestguess, error')
-  print(np.array2string(np.transpose(np.concatenate(
-    (functype_train[trainindex], besttrain, train_lossper_))),
-    formatter={'float_kind':lambda x: '%.4f' % x}))
+  # print('TRAIN: actual, bestguess, error')
+  # print(np.array2string(np.transpose(np.concatenate(
+  #   (functype_train[trainindex], besttrain, train_lossper_))),
+  #   formatter={'float_kind':lambda x: '%.4f' % x}))
 
   # plt.scatter(trainindex,train_lossper_)
   # plt.show()
@@ -276,10 +296,10 @@ def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
 
   besttest = np.reshape(np.argmax(Ftest_NN_[0:nfunctest,:],axis=0),(1,ntest))
 
-  print('TEST: actual, bestguess,error')
-  print(np.array2string(np.transpose(np.concatenate(
-    (functype_test[testindex], besttest, test_errorper))),
-    formatter={'float_kind':lambda x: '%.4f' % x}))
+  # print('TEST: actual, bestguess,error')
+  # print(np.array2string(np.transpose(np.concatenate(
+  #   (functype_test[testindex], besttest, test_errorper))),
+  #   formatter={'float_kind':lambda x: '%.4f' % x}))
 
   noog = np.sum([functype_train[trainindex] != besttrain]) / ntrain
   print('TRAIN error rate: ',noog)
@@ -290,6 +310,7 @@ def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
   plt.show()
   plt.scatter(functype_test[testindex],test_errorper)
   plt.show()
+  input('press enter')
 
   return C_, T_, W_
 
@@ -297,23 +318,59 @@ cnum = startC
 mnum = startM
 pnum = startP
 
-flag = True
-while flag :
+nterm, _ = getBasis(cnum,mnum)
+Cinit = np.random.normal(np.zeros((clen,cnum)))
+Tinit = np.random.normal(np.zeros((nterm,pnum)))
+Winit = np.random.normal(np.zeros((pnum,nfunc)))
+
+doflag = True
+while doflag :
     
-  nterm = mnum**cnum
-  Cinit = np.random.normal(np.zeros((clen,cnum)))
-  Tinit = np.random.normal(np.zeros((nterm,pnum)))
-  # Tinit = np.zeros((nterm,pnum))
-  # Tinit[0,:] = 1
-  Winit = np.random.normal(np.zeros((pnum,nfunc)))
-  
+  nterm0, MonPwr0 = getBasis(cnum,mnum)
+
   Cfinal, Tfinal, Wfinal = DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit)
 
-  flag = cnum < NUMC or pnum < NUMP or mnum < NUMM
+  doflag = cnum < NUMC or pnum < NUMP or mnum < NUMM
+
+  cprev = cnum
+  mprev = mnum
+  pprev = pnum
+  
   cnum = np.min((cnum+1,NUMC))
   mnum = np.min((mnum+1,NUMM))
   pnum = np.min((pnum+1,NUMP))
+
+  # MonPwr(cnum,nterm)
+  nterm, MonPwr = getBasis(cnum,mnum)
   
+  Cinit = np.zeros((clen,cnum))
+  Tinit = np.zeros((nterm,pnum))
+  Winit = np.zeros((pnum,nfunc))
+  
+  Cinit = np.random.normal(np.zeros((clen,cnum)))
+
+  # transform from terms to poly
+  # Tinit[:,pprev:pnum] = np.random.normal(np.zeros((nterm,pnum-pprev)))
+  
+  # transform from poly to func
+  # Winit[pprev:pnum,:] = np.random.normal(np.zeros((pprev-pnum,nfunc)))
+
+  Cinit[:,0:cprev] = Cfinal
+  Winit[0:pprev,:] = Wfinal
+
+  for iterm in np.arange(nterm0):
+    tflag = False
+    for jterm in np.arange(nterm):
+      if np.all(MonPwr0[:,iterm] == MonPwr[0:cprev,jterm]) and \
+         np.all(MonPwr[cprev:cnum,jterm] ==0) :
+        assert not tflag
+        kterm = jterm
+        tflag = True
+        # break
+    assert tflag
+    jterm = kterm
+    Tinit[jterm,0:pprev] = Tfinal[iterm,:]
+    Tinit[jterm,pprev:pnum] = np.random.normal(np.zeros(1,pnum-pprev))
 exit()
 
 
