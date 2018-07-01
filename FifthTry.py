@@ -7,14 +7,9 @@ nper       = 10
 ntrain    = 2000
 ntest     = 2000
 
-clen = 39
-cnum = 2            # number of convolutions
-mnum = 2            # highest power each convolution
-pnum = 5            # number of polynomials before relu
-
 nTrainSteps = 10000
 
-nterm = mnum**cnum  # total number of polynomial terms
+clen = 39
 
 ##############################
 
@@ -22,18 +17,13 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 
-###### constants
-
-# MonPwr(cnum,nterm)
-MonPwr = np.mod( np.floor(
-  np.reshape( np.arange(nterm),     (1,nterm) ) /
-  np.reshape( mnum**np.arange(cnum), (cnum,1) ) ), mnum)
-
 ###### x-values at which to evaluate the functions
 
 nx    = xrange * nper
 xdata = np.arange(xrange*nper)/nper
 xdata = np.reshape(xdata,(nx,1))
+
+nc = nx + 1 - clen;
 
 ######  positive-valued functions
 
@@ -44,8 +34,7 @@ def mysin(x):
   return np.sin(16.28*x/xrange)**2
 
 funclist = [mysin,myquad]
-
-nfunc = len(funclist)
+nfunc    = len(funclist)
 
 # get the positive-valued functions ydata(nx,ntrain)
 #   with random parameters
@@ -74,6 +63,12 @@ def getdata(functype):
 
 ######  random functions for train and test
 
+# output to fit for training
+Ftrain_fit = tf.placeholder(tf.float64, shape=(nfunc,ntrain))
+
+# input
+Ytrain_fit = tf.placeholder(tf.float64, shape=(nx,ntrain))
+
 functype_train = np.random.choice(nfunc,ntrain)
 functype_test  = np.random.choice(nfunc,ntest)
 
@@ -94,11 +89,7 @@ ytest_actual  = getdata(functype_test)
 #   plt.scatter(xdata,ytrain_actual[:,ivec])
 # plt.show()
 
-#####   OKAY.  convolution size:
-
-nc = nx + 1 - clen;
-
-#####   DO TENSORFLOW
+#####   TENSORFLOW functions:
 
 def myconv(inp,C):
 
@@ -123,38 +114,7 @@ def myconv(inp,C):
 
   return outp
 
-# output to fit for training
-Ftrain_fit = tf.placeholder(tf.float64, shape=(nfunc,ntrain))
-
-# input
-Ytrain_fit = tf.placeholder(tf.float64, shape=(nx,ntrain))
-
-#
-# NN PARAMETERS TO TRAIN
-#
-
-C = tf.get_variable('C',(clen,cnum),
-              dtype=tf.float64,
-              initializer = tf.random_normal_initializer)
-
-T = tf.get_variable('T',(nterm,pnum),
-              dtype=tf.float64,
-              initializer = tf.random_normal_initializer)
-
-W = tf.get_variable('W',(pnum,nfunc),
-              dtype=tf.float64,
-              initializer = tf.random_normal_initializer)
-
-# tt = np.zeros((nterm,1))
-# tt[0,0] = 1
-# Winit = tt * np.ones(nfunc)
-# W = tf.get_variable('W',dtype=tf.float64,
-#        initializer = tf.constant(Winit))
-# #        initializer = tf.zeros((nterm,nfunc),dtype=tf.float64))
-
-##############
-
-def myNNfunc(Im,C,T,W):
+def myNNfunc(Im,C,T,W,cnum,mnum,pnum):
   # Im(nx,nvec)
   # C(clen,cnum)         convolve Im
   # T(mnum**cnum,pnum)
@@ -195,11 +155,44 @@ def myNNfunc(Im,C,T,W):
 
   return Max
 
+#
+# NN PARAMETERS TO TRAIN
+#
+
+cnum = 3            # number of convolutions
+mnum = 3            # highest power each convolution plus one
+pnum = 4            # number of polynomials before relu
+
+nterm = mnum**cnum  # total number of polynomial terms
+
+# MonPwr(cnum,nterm)
+MonPwr = np.mod( np.floor(
+  np.reshape( np.arange(nterm),     (1,nterm) ) /
+  np.reshape( mnum**np.arange(cnum), (cnum,1) ) ), mnum)
+
+C = tf.get_variable('C',(clen,cnum),
+              dtype=tf.float64,
+              initializer = tf.random_normal_initializer)
+
+T = tf.get_variable('T',(nterm,pnum),
+              dtype=tf.float64,
+              initializer = tf.random_normal_initializer)
+
+W = tf.get_variable('W',(pnum,nfunc),
+              dtype=tf.float64,
+              initializer = tf.random_normal_initializer)
+
+# tt = np.zeros((nterm,1))
+# tt[0,0] = 1
+# Winit = tt * np.ones(nfunc)
+# W = tf.get_variable('W',dtype=tf.float64,
+#        initializer = tf.constant(Winit))
+# #        initializer = tf.zeros((nterm,nfunc),dtype=tf.float64))
 
 
 ######      TRAIN    ######
 
-Ftrain_NN = myNNfunc(Ytrain_fit,C,T,W)
+Ftrain_NN = myNNfunc(Ytrain_fit,C,T,W,cnum,mnum,pnum)
 
 if 1==1:
   # error for each sample
@@ -250,7 +243,7 @@ print(np.array2string(np.transpose(np.concatenate(
 
 ######      TEST    ######
 
-Ftest_NN = myNNfunc(ytest_actual,C_,T_,W_)
+Ftest_NN = myNNfunc(ytest_actual,C_,T_,W_,cnum,mnum,pnum)
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
   Ftest_NN_ = sess.run(Ftest_NN)
