@@ -102,6 +102,7 @@ def myconv(inp,C):
   #   outp(nc,nvec,cnum)
 
   nvec = inp.shape[1]
+  cnum = C.shape[1]
 
   inp=tf.reshape(tf.transpose(inp),(nvec,nx,1))
   C  =tf.reshape(C,                (clen,1,cnum))
@@ -124,12 +125,19 @@ def myNNfunc(Im,C,T,W,cnum,mnum,pnum):
   
   nvec = Im.shape[1]
 
-  Im = Im - tf.reduce_mean(Im,axis=(0));
-  Im = Im / tf.sqrt(tf.reduce_sum(Im**2,axis=0))
+  # Im = Im - tf.reduce_mean(Im,axis=(0));
+  # Im = Im / tf.sqrt(tf.reduce_sum(Im**2,axis=0))
 
   # Conved(nc,nvec,cnum)
   Conved = myconv(Im,C)
 
+  nterm = mnum**cnum
+  
+  # MonPwr(cnum,nterm)
+  MonPwr = np.mod( np.floor(
+    np.reshape( np.arange(nterm),     (1,nterm) ) /
+    np.reshape( mnum**np.arange(cnum), (cnum,1) ) ), mnum)
+  
   Terms = tf.reduce_sum(
     tf.reshape(Conved,(nc,nvec,cnum,1)) ** \
     tf.reshape(MonPwr,(1,1,cnum,nterm)), axis=(2))
@@ -159,118 +167,121 @@ def myNNfunc(Im,C,T,W,cnum,mnum,pnum):
 # NN PARAMETERS TO TRAIN
 #
 
-cnum = 3            # number of convolutions
-mnum = 3            # highest power each convolution plus one
-pnum = 4            # number of polynomials before relu
+cnum = 2            # number of convolutions
+mnum = 2            # highest power each convolution plus one
+pnum = 2            # number of polynomials before relu
 
-nterm = mnum**cnum  # total number of polynomial terms
+def DOIT(cnum,mnum,pnum):
 
-# MonPwr(cnum,nterm)
-MonPwr = np.mod( np.floor(
-  np.reshape( np.arange(nterm),     (1,nterm) ) /
-  np.reshape( mnum**np.arange(cnum), (cnum,1) ) ), mnum)
+  nterm = mnum**cnum  # total number of polynomial terms
 
-C = tf.get_variable('C',(clen,cnum),
-              dtype=tf.float64,
-              initializer = tf.random_normal_initializer)
+  C = tf.get_variable('C', dtype=tf.float64,
+                shape=(clen,cnum),
+                initializer = tf.random_normal_initializer)
+  #          initializer = tf.zeros((clen,cnum),dtype=tf.float64))
+  
+  T = tf.get_variable('T',dtype=tf.float64,
+                shape=(nterm,pnum),
+                initializer = tf.random_normal_initializer)
+  #          initializer = tf.zeros((nterm,pnum),dtype=tf.float64))
+  
+  W = tf.get_variable('W',(pnum,nfunc),
+                dtype=tf.float64,
+                initializer = tf.random_normal_initializer)
 
-T = tf.get_variable('T',(nterm,pnum),
-              dtype=tf.float64,
-              initializer = tf.random_normal_initializer)
-
-W = tf.get_variable('W',(pnum,nfunc),
-              dtype=tf.float64,
-              initializer = tf.random_normal_initializer)
-
-# tt = np.zeros((nterm,1))
-# tt[0,0] = 1
-# Winit = tt * np.ones(nfunc)
-# W = tf.get_variable('W',dtype=tf.float64,
-#        initializer = tf.constant(Winit))
-# #        initializer = tf.zeros((nterm,nfunc),dtype=tf.float64))
+  # tt = np.zeros((nterm,1))
+  # tt[0,0] = 1
+  # Winit = tt * np.ones(nfunc)
+  # W = tf.get_variable('W',dtype=tf.float64,
+  #        initializer = tf.constant(Winit))
+  # #        initializer = tf.zeros((nterm,nfunc),dtype=tf.float64))
 
 
-######      TRAIN    ######
+  ######      TRAIN    ######
 
-Ftrain_NN = myNNfunc(Ytrain_fit,C,T,W,cnum,mnum,pnum)
+  Ftrain_NN = myNNfunc(Ytrain_fit,C,T,W,cnum,mnum,pnum)
 
-if 1==1:
-  # error for each sample
-  train_lossper = tf.reshape(
-    tf.reduce_sum(tf.abs(Ftrain_fit-Ftrain_NN),axis=0),(1,ntrain))
-  #  tf.reduce_sum((Ftrain_fit-Ftrain_NN)**2,axis=0),(1,ntrain))
-  # summed over samples
-  train_LOSS = tf.reduce_mean(train_lossper);
-else:
-  train_lossper = tf.zeros((1,ntrain))
-  train_LOSS = tf.losses.sparse_softmax_cross_entropy(
-    functype_train,tf.transpose(Ftrain_NN))
+  if 1==1:
+    # error for each sample
+    train_lossper = tf.reshape(
+      tf.reduce_sum(tf.abs(Ftrain_fit-Ftrain_NN),axis=0),(1,ntrain))
+    #  tf.reduce_sum((Ftrain_fit-Ftrain_NN)**2,axis=0),(1,ntrain))
+    # summed over samples
+    train_LOSS = tf.reduce_mean(train_lossper);
+  else:
+    train_lossper = tf.zeros((1,ntrain))
+    train_LOSS = tf.losses.sparse_softmax_cross_entropy(
+      functype_train,tf.transpose(Ftrain_NN))
 
-OPT_train = tf.train.AdamOptimizer().minimize(train_LOSS)
+  OPT_train = tf.train.AdamOptimizer().minimize(train_LOSS)
 
-# OPT_train = tf.train.GradientDescentOptimizer(
-#   learning_rate=0.01).minimize(train_LOSS)
+  # OPT_train = tf.train.GradientDescentOptimizer(
+  #   learning_rate=0.01).minimize(train_LOSS)
 
-with tf.Session() as sess:
-  sess.run(tf.global_variables_initializer())
+  with tf.Session() as sess:
+    sess.run(tf.global_variables_initializer())
 
-  for istep in range(nTrainSteps):
-    
-    _, train_loss_, train_lossper_, \
-      Ftrain_NN_, C_, T_, W_ = sess.run(
-      [OPT_train,train_LOSS,train_lossper,Ftrain_NN,C,T,W]
-      ,feed_dict={Ytrain_fit:ytrain_actual,Ftrain_fit:ftrain_actual})
-    if np.mod(istep,100)==0:
-      print('loss: %s  step %i of %i'%(train_loss_,istep,nTrainSteps))
+    for istep in range(nTrainSteps):
 
-C_ = np.array(C_)
-W_ = np.array(W_)
+      _, train_loss_, train_lossper_, \
+        Ftrain_NN_, C_, T_, W_ = sess.run(
+        [OPT_train,train_LOSS,train_lossper,Ftrain_NN,C,T,W]
+        ,feed_dict={Ytrain_fit:ytrain_actual,Ftrain_fit:ftrain_actual})
+      if np.mod(istep,100)==0:
+        print('loss: %s  step %i of %i'%(train_loss_,istep,nTrainSteps))
 
-trainindex = np.arange(ntrain);
-trainindex = np.reshape(trainindex,(1,ntrain))
+  trainindex = np.arange(ntrain);
+  trainindex = np.reshape(trainindex,(1,ntrain))
 
-besttrain = np.reshape(np.argmax(Ftrain_NN_,axis=0),(1,ntrain))
+  besttrain = np.reshape(np.argmax(Ftrain_NN_,axis=0),(1,ntrain))
 
-print('TRAIN: actual, bestguess, error')
-print(np.array2string(np.transpose(np.concatenate(
-  (functype_train[trainindex], besttrain, train_lossper_))),
-  formatter={'float_kind':lambda x: '%.4f' % x}))
+  print('TRAIN: actual, bestguess, error')
+  print(np.array2string(np.transpose(np.concatenate(
+    (functype_train[trainindex], besttrain, train_lossper_))),
+    formatter={'float_kind':lambda x: '%.4f' % x}))
 
-# plt.scatter(trainindex,train_lossper_)
-# plt.show()
-# plt.scatter(functype_train[trainindex],train_lossper_)
-# plt.show()
+  # plt.scatter(trainindex,train_lossper_)
+  # plt.show()
+  # plt.scatter(functype_train[trainindex],train_lossper_)
+  # plt.show()
 
-######      TEST    ######
+  ######      TEST    ######
 
-Ftest_NN = myNNfunc(ytest_actual,C_,T_,W_,cnum,mnum,pnum)
-with tf.Session() as sess:
-  sess.run(tf.global_variables_initializer())
-  Ftest_NN_ = sess.run(Ftest_NN)
+  Ftest_NN = myNNfunc(ytest_actual,C_,T_,W_,cnum,mnum,pnum)
+  with tf.Session() as sess:
+    sess.run(tf.global_variables_initializer())
+    Ftest_NN_ = sess.run(Ftest_NN)
 
-Ftest_NN_ = np.array(Ftest_NN_)
+  Ftest_NN_ = np.array(Ftest_NN_)
 
-testindex = np.arange(ntest);
-testindex = np.reshape(testindex,(1,ntest))
+  testindex = np.arange(ntest);
+  testindex = np.reshape(testindex,(1,ntest))
 
-test_errorper = np.reshape(
-  np.sum((ftest_actual-Ftest_NN_)**2,axis=0),(1,ntest))
+  test_errorper = np.reshape(
+    np.sum((ftest_actual-Ftest_NN_)**2,axis=0),(1,ntest))
 
-besttest = np.reshape(np.argmax(Ftest_NN_,axis=0),(1,ntest))
+  besttest = np.reshape(np.argmax(Ftest_NN_,axis=0),(1,ntest))
 
-print('TEST: actual, bestguess,error')
-print(np.array2string(np.transpose(np.concatenate(
-  (functype_test[testindex], besttest, test_errorper))),
-  formatter={'float_kind':lambda x: '%.4f' % x}))
+  print('TEST: actual, bestguess,error')
+  print(np.array2string(np.transpose(np.concatenate(
+    (functype_test[testindex], besttest, test_errorper))),
+    formatter={'float_kind':lambda x: '%.4f' % x}))
 
-noog = np.sum([functype_train[trainindex] != besttrain]) / ntrain
-print('TRAIN error rate: ',noog)
-noog = np.sum([functype_test[testindex] != besttest]) / ntest
-print(' TEST error rate: ',noog)
+  noog = np.sum([functype_train[trainindex] != besttrain]) / ntrain
+  print('TRAIN error rate: ',noog)
+  noog = np.sum([functype_test[testindex] != besttest]) / ntest
+  print(' TEST error rate: ',noog)
 
-plt.scatter(testindex,test_errorper)
-plt.show()
-plt.scatter(functype_test[testindex],test_errorper)
-plt.show()
+  plt.scatter(testindex,test_errorper)
+  plt.show()
+  plt.scatter(functype_test[testindex],test_errorper)
+  plt.show()
+
+
+DOIT(cnum,mnum,pnum)
+
+exit()
+
+
 
 
