@@ -7,7 +7,7 @@ nper       = 10
 ntrain    = 2000
 ntest     = 2000
 
-nTrainSteps = 10000
+nTrainSteps = 50000
 
 clen = 39
 
@@ -17,9 +17,9 @@ NUMC = 2            # number of convolutions
 NUMM = 2            # highest power each convolution plus one
 NUMP = 5            # number of polynomials before relu
 
-startC = NUMC-1
-startM = NUMM-1
-startP = NUMP-1
+startC = NUMC
+startM = NUMM
+startP = NUMP
 
 ##############################
 
@@ -43,13 +43,24 @@ def myquad(x):
 def mysin(x):
   return np.sin(16.28*x/xrange)**2
 
-funclist = [mysin,myquad]
+def myrand(x):
+  return np.exp(np.random.normal(x*0))
+
+DORAND = False
+if DORAND:
+  funclist = [mysin,myquad,myrand]
+else:
+  funclist = [mysin,myquad]
 nfunc    = len(funclist)
+if DORAND:
+  nfunctest = nfunc-1
+else:
+  nfunctest = nfunc
 
 # get the positive-valued functions ydata(nx,ntrain)
 #   with random parameters
 
-def yfunc(ifuncs,xvals,xshift,xfac,yfac):
+def yfunc(ifuncs,xvals,xshift,xfac,yshift,yfac):
   # positive-valued function
   #
   ninput = ifuncs.size
@@ -58,17 +69,18 @@ def yfunc(ifuncs,xvals,xshift,xfac,yfac):
   assert np.all(ifuncs >= 0) and np.all(ifuncs < nfunc)
   yvals = np.zeros([nx,ninput])
   for isp in range(ninput):
-    yvals[:,isp] = \
+    yvals[:,isp] = yshift[isp]**2 + \
       yfac[isp]**2 * funclist[ifuncs[isp]](xshift[isp] +
       xfac[isp] * xvals[:,0])
   return yvals
 
 def getdata(functype):
   numvecs = functype.size
-  xshift = np.random.normal(np.zeros(numvecs))
+  xshift = np.random.normal(np.zeros(numvecs))*xrange
   xfac   = np.random.normal(np.zeros(numvecs))
+  yshift = np.random.normal(np.zeros(numvecs))*10
   yfac   = np.random.normal(np.zeros(numvecs))
-  ydata  = yfunc(functype,xdata,xshift,xfac,yfac)
+  ydata  = yfunc(functype,xdata,xshift,xfac,yshift,yfac)
   return ydata
 
 ######  random functions for train and test
@@ -80,7 +92,8 @@ Ftrain_fit = tf.placeholder(tf.float64, shape=(nfunc,ntrain))
 Ytrain_fit = tf.placeholder(tf.float64, shape=(nx,ntrain))
 
 functype_train = np.random.choice(nfunc,ntrain)
-functype_test  = np.random.choice(nfunc,ntest)
+
+functype_test  = np.random.choice(nfunctest,ntest)
 
 functype_train = np.reshape(functype_train,(ntrain,))
 
@@ -125,6 +138,16 @@ def myconv(inp,C):
 
   return outp
 
+def getBasis(cnum,mnum) :
+  nterm = mnum**cnum
+  
+  # MonPwr(cnum,nterm)
+  MonPwr = np.mod( np.floor(
+    np.reshape( np.arange(nterm),     (1,nterm) ) /
+    np.reshape( mnum**np.arange(cnum), (cnum,1) ) ), mnum)
+
+  return nterm, MonPwr
+
 def myNNfunc(Im,C,T,W,cnum,mnum,pnum):
   # Im(nx,nvec)
   # C(clen,cnum)         convolve Im
@@ -135,18 +158,14 @@ def myNNfunc(Im,C,T,W,cnum,mnum,pnum):
   
   nvec = Im.shape[1]
 
-  # Im = Im - tf.reduce_mean(Im,axis=(0));
-  # Im = Im / tf.sqrt(tf.reduce_sum(Im**2,axis=0))
+  Im = Im - tf.reduce_mean(Im,axis=(0));
+  Im = Im / tf.sqrt(tf.reduce_sum(Im**2,axis=0))
 
   # Conved(nc,nvec,cnum)
   Conved = myconv(Im,C)
 
-  nterm = mnum**cnum
-  
   # MonPwr(cnum,nterm)
-  MonPwr = np.mod( np.floor(
-    np.reshape( np.arange(nterm),     (1,nterm) ) /
-    np.reshape( mnum**np.arange(cnum), (cnum,1) ) ), mnum)
+  nterm, MonPwr = getBasis(cnum,mnum)
   
   Terms = tf.reduce_sum(
     tf.reshape(Conved,(nc,nvec,cnum,1)) ** \
@@ -177,11 +196,10 @@ def myNNfunc(Im,C,T,W,cnum,mnum,pnum):
 # NN PARAMETERS TO TRAIN
 #
 
-Cfinal = 0
-Tfinal = 0
-Wfinal = 0
-
 def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
+  # Cinit(clen,cnum)
+  # Tinit(nterm,pnum)
+  # Winit(pnum,nfunc)
 
   nterm = mnum**cnum  # total number of polynomial terms
 
@@ -252,10 +270,11 @@ def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
   testindex = np.arange(ntest);
   testindex = np.reshape(testindex,(1,ntest))
 
+  # (nfunc,nvec)
   test_errorper = np.reshape(
     np.sum((ftest_actual-Ftest_NN_)**2,axis=0),(1,ntest))
 
-  besttest = np.reshape(np.argmax(Ftest_NN_,axis=0),(1,ntest))
+  besttest = np.reshape(np.argmax(Ftest_NN_[0:nfunctest,:],axis=0),(1,ntest))
 
   print('TEST: actual, bestguess,error')
   print(np.array2string(np.transpose(np.concatenate(
@@ -272,24 +291,29 @@ def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
   plt.scatter(functype_test[testindex],test_errorper)
   plt.show()
 
+  return C_, T_, W_
+
 cnum = startC
 mnum = startM
 pnum = startP
 
 flag = True
 while flag :
-  cnum = np.min((cnum+1,NUMC))
-  mnum = np.min((mnum+1,NUMM))
-  pnum = np.min((pnum+1,NUMP))
-  flag = cnum < NUMC or pnum < NUMP or mnum < NUMM
-  
+    
   nterm = mnum**cnum
   Cinit = np.random.normal(np.zeros((clen,cnum)))
   Tinit = np.random.normal(np.zeros((nterm,pnum)))
+  # Tinit = np.zeros((nterm,pnum))
+  # Tinit[0,:] = 1
   Winit = np.random.normal(np.zeros((pnum,nfunc)))
   
-  DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit)
+  Cfinal, Tfinal, Wfinal = DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit)
 
+  flag = cnum < NUMC or pnum < NUMP or mnum < NUMM
+  cnum = np.min((cnum+1,NUMC))
+  mnum = np.min((mnum+1,NUMM))
+  pnum = np.min((pnum+1,NUMP))
+  
 exit()
 
 
