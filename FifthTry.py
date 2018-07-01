@@ -4,8 +4,8 @@
 
 xrange     = 4
 nper       = 10
-ntrain    = 10000
-ntest     = 10000
+ntrain    = 5000
+ntest     = 5000
 
 nTrainSteps = 10000
 
@@ -148,6 +148,8 @@ def getBasis(cnum,mnum) :
 
   okmon = np.sum(MonPwr,0) < mnum
   MonPwr = MonPwr[:,okmon]
+  okmon = np.sum(MonPwr,0) > 0
+  MonPwr = MonPwr[:,okmon]
 
   nterm = MonPwr.shape[1]
   return nterm, MonPwr
@@ -242,7 +244,7 @@ def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
       functype_train,tf.transpose(Ftrain_NN))
 
   OPT_train = tf.train.AdamOptimizer(
-    learning_rate=0.001,beta1=0.9,beta2=0.9,epsilon=1e-8
+    # learning_rate=0.001,beta1=0.9,beta2=0.9,epsilon=1e-8
     ).minimize(train_LOSS)
 
   # OPT_train = tf.train.GradientDescentOptimizer(
