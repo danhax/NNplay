@@ -4,8 +4,8 @@
 
 xrange     = 4
 nper       = 10
-ntrain    = 500
-ntest     = 20
+ntrain    = 2000
+ntest     = 2000
 
 clen = 40
 cnum = 2            # number of convolutions
@@ -75,6 +75,8 @@ def getdata(functype):
 functype_train = np.random.choice(nfunc,ntrain)
 functype_test  = np.random.choice(nfunc,ntest)
 
+functype_train = np.reshape(functype_train,(ntrain,))
+
 ftrain_actual          = np.zeros([nfunc,ntrain])
 for ivec in range(ntrain):
   ftrain_actual[functype_train[ivec],ivec] = 1
@@ -128,17 +130,20 @@ Ytrain_fit = tf.placeholder(tf.float64, shape=(nx,ntrain))
 #
 # NN PARAMETERS TO TRAIN
 #
+
 C = tf.get_variable('C',(clen,cnum),
               dtype=tf.float64,
               initializer = tf.random_normal_initializer)
-tt = np.zeros((nterm,1))
-tt[0,0] = 1
-Winit = tt * np.ones(nfunc)
-# W = tf.get_variable('W',(nterm,nfunc),
-#               dtype=tf.float64,
-#               initializer = tf.random_normal_initializer)
-W = tf.get_variable('W',dtype=tf.float64,
-              initializer = tf.constant(Winit))
+
+W = tf.get_variable('W',(nterm,nfunc),
+              dtype=tf.float64,
+              initializer = tf.random_normal_initializer)
+# tt = np.zeros((nterm,1))
+# tt[0,0] = 1
+# Winit = tt * np.ones(nfunc)
+# W = tf.get_variable('W',dtype=tf.float64,
+#        initializer = tf.constant(Winit))
+# #        initializer = tf.zeros((nterm,nfunc),dtype=tf.float64))
 
 ##############
 
@@ -151,6 +156,9 @@ def myNNfunc(Im,C,W):
   
   nvec = Im.shape[1]
 
+  Im = Im - tf.reduce_mean(Im,axis=(0));
+  Im = Im / tf.sqrt(tf.reduce_sum(Im**2,axis=0))
+
   # Conved(nc,nvec,cnum)
   Conved = myconv(Im,C)
 
@@ -158,31 +166,45 @@ def myNNfunc(Im,C,W):
     tf.reshape(Conved,(nc,nvec,cnum,1)) ** \
     tf.reshape(MonPwr,(1,1,cnum,nterm)), axis=(2))
 
+  Terms = tf.nn.relu(Terms)
+
   # Terms(nc,nvec,nterm)
   Terms = tf.reshape( Terms, (nc,nvec,nterm) )
 
   # W(nterm,nfunc)  ->  Poly(nc,nvec,nfunc)
   Poly = tf.tensordot(Terms,W,axes=((2),(0)))
-  
-  Sigmoid = tf.sigmoid(Poly)
+
+  # Poly = tf.nn.relu(Poly)
+    
+  Sigmoid = tf.nn.softmax(Poly,2)
   
   Avg = tf.reshape(tf.reduce_mean(Sigmoid,axis=0),(nvec,nfunc))
+  
   # Avg(nfunc,nvec)
   Avg = tf.transpose(Avg)
+
   return Avg
 
 ######      TRAIN    ######
 
 Ftrain_NN = myNNfunc(Ytrain_fit,C,W)
 
-# error for each sample
-train_lossper = tf.reshape(
-  tf.reduce_sum(tf.abs(Ftrain_fit-Ftrain_NN),axis=0),(1,ntrain))
-#  tf.reduce_sum((Ftrain_fit-Ftrain_NN)**2,axis=0),(1,ntrain))
+if 1==1:
+  # error for each sample
+  train_lossper = tf.reshape(
+    tf.reduce_sum(tf.abs(Ftrain_fit-Ftrain_NN),axis=0),(1,ntrain))
+  #  tf.reduce_sum((Ftrain_fit-Ftrain_NN)**2,axis=0),(1,ntrain))
+  # summed over samples
+  train_LOSS = tf.reduce_sum(train_lossper);
+else:
+  train_lossper = tf.zeros((1,ntrain))
+  train_LOSS = tf.losses.sparse_softmax_cross_entropy(
+    functype_train,tf.transpose(Ftrain_NN))
 
-# summed over samples
-train_LOSS = tf.reduce_sum(train_lossper);
 OPT_train = tf.train.AdamOptimizer().minimize(train_LOSS)
+
+# OPT_train = tf.train.GradientDescentOptimizer(
+#   learning_rate=0.01).minimize(train_LOSS)
 
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
@@ -193,7 +215,8 @@ with tf.Session() as sess:
       Ftrain_NN_, C_, W_ = sess.run(
       [OPT_train,train_LOSS,train_lossper,Ftrain_NN,C,W]
       ,feed_dict={Ytrain_fit:ytrain_actual,Ftrain_fit:ftrain_actual})
-    print('loss: %s  step %i of %i'%(train_loss_,istep,nTrainSteps))
+    if np.mod(istep,100)==0:
+      print('loss: %s  step %i of %i'%(train_loss_,istep,nTrainSteps))
 
 C_ = np.array(C_)
 W_ = np.array(W_)
@@ -208,10 +231,10 @@ print(np.array2string(np.transpose(np.concatenate(
   (functype_train[trainindex], besttrain, train_lossper_))),
   formatter={'float_kind':lambda x: '%.4f' % x}))
 
-plt.scatter(trainindex,train_lossper_)
-plt.show()
-plt.scatter(functype_train[trainindex],train_lossper_)
-plt.show()
+# plt.scatter(trainindex,train_lossper_)
+# plt.show()
+# plt.scatter(functype_train[trainindex],train_lossper_)
+# plt.show()
 
 ######      TEST    ######
 
@@ -235,7 +258,14 @@ print(np.array2string(np.transpose(np.concatenate(
   (functype_test[testindex], besttest, test_errorper))),
   formatter={'float_kind':lambda x: '%.4f' % x}))
 
+noog = np.sum([functype_train[trainindex] != besttrain]) / ntrain
+print('TRAIN error rate: ',noog)
+noog = np.sum([functype_test[testindex] != besttest]) / ntest
+print(' TEST error rate: ',noog)
+
 plt.scatter(testindex,test_errorper)
 plt.show()
 plt.scatter(functype_test[testindex],test_errorper)
 plt.show()
+
+
