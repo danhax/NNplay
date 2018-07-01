@@ -10,6 +10,8 @@ ntest     = 2000
 clen = 39
 cnum = 2            # number of convolutions
 mnum = 2            # highest power each convolution
+pnum = 5            # number of polynomials before relu
+
 nTrainSteps = 50000
 
 nterm = mnum**cnum  # total number of polynomial terms
@@ -135,9 +137,14 @@ C = tf.get_variable('C',(clen,cnum),
               dtype=tf.float64,
               initializer = tf.random_normal_initializer)
 
-W = tf.get_variable('W',(nterm,nfunc),
+T = tf.get_variable('T',(nterm,pnum),
               dtype=tf.float64,
               initializer = tf.random_normal_initializer)
+
+W = tf.get_variable('W',(pnum,nfunc),
+              dtype=tf.float64,
+              initializer = tf.random_normal_initializer)
+
 # tt = np.zeros((nterm,1))
 # tt[0,0] = 1
 # Winit = tt * np.ones(nfunc)
@@ -147,10 +154,11 @@ W = tf.get_variable('W',(nterm,nfunc),
 
 ##############
 
-def myNNfunc(Im,C,W):
+def myNNfunc(Im,C,T,W):
   # Im(nx,nvec)
   # C(clen,cnum)         convolve Im
-  # W(mnum**cnum,nfunc)   linear transform polynomials to response functions
+  # T(mnum**cnum,pnum)
+  # W(pnum,nfunc)   linear transform polynomials to response functions
   #                          nterm = mnum**cnum
   # out(nfunc,nvec)      0 to 1
   
@@ -166,17 +174,19 @@ def myNNfunc(Im,C,W):
     tf.reshape(Conved,(nc,nvec,cnum,1)) ** \
     tf.reshape(MonPwr,(1,1,cnum,nterm)), axis=(2))
 
-  Terms = tf.nn.relu(Terms)
-
   # Terms(nc,nvec,nterm)
   Terms = tf.reshape( Terms, (nc,nvec,nterm) )
 
-  # W(nterm,nfunc)  ->  Poly(nc,nvec,nfunc)
-  Poly = tf.tensordot(Terms,W,axes=((2),(0)))
+  # T(nterm,pnum)  ->  Poly(nc,nvec,pnum)
+  Poly = tf.tensordot(Terms,T,axes=((2),(0)))
 
-  # Poly = tf.nn.relu(Poly)
+  Poly = tf.nn.relu(Poly)
+
+  # W(pnum,nfunc)  ->  Func(nc,nvec,nfunc)
+
+  Func = tf.tensordot(Poly,W,axes=((2),(0)))  
     
-  Sigmoid = tf.nn.softmax(Poly,2)
+  Sigmoid = tf.nn.softmax(Func,2)
   
   Avg = tf.reshape(tf.reduce_mean(Sigmoid,axis=0),(nvec,nfunc))
   
@@ -187,7 +197,7 @@ def myNNfunc(Im,C,W):
 
 ######      TRAIN    ######
 
-Ftrain_NN = myNNfunc(Ytrain_fit,C,W)
+Ftrain_NN = myNNfunc(Ytrain_fit,C,T,W)
 
 if 1==1:
   # error for each sample
@@ -195,7 +205,7 @@ if 1==1:
     tf.reduce_sum(tf.abs(Ftrain_fit-Ftrain_NN),axis=0),(1,ntrain))
   #  tf.reduce_sum((Ftrain_fit-Ftrain_NN)**2,axis=0),(1,ntrain))
   # summed over samples
-  train_LOSS = tf.reduce_sum(train_lossper);
+  train_LOSS = tf.reduce_mean(train_lossper);
 else:
   train_lossper = tf.zeros((1,ntrain))
   train_LOSS = tf.losses.sparse_softmax_cross_entropy(
@@ -212,8 +222,8 @@ with tf.Session() as sess:
   for istep in range(nTrainSteps):
     
     _, train_loss_, train_lossper_, \
-      Ftrain_NN_, C_, W_ = sess.run(
-      [OPT_train,train_LOSS,train_lossper,Ftrain_NN,C,W]
+      Ftrain_NN_, C_, T_, W_ = sess.run(
+      [OPT_train,train_LOSS,train_lossper,Ftrain_NN,C,T,W]
       ,feed_dict={Ytrain_fit:ytrain_actual,Ftrain_fit:ftrain_actual})
     if np.mod(istep,100)==0:
       print('loss: %s  step %i of %i'%(train_loss_,istep,nTrainSteps))
@@ -238,7 +248,7 @@ print(np.array2string(np.transpose(np.concatenate(
 
 ######      TEST    ######
 
-Ftest_NN = myNNfunc(ytest_actual,C_,W_)
+Ftest_NN = myNNfunc(ytest_actual,C_,T_,W_)
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
   Ftest_NN_ = sess.run(Ftest_NN)
