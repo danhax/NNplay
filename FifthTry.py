@@ -7,10 +7,10 @@ nper       = 10
 ntrain    = 2000
 ntest     = 2000
 
-clen = 40
+clen = 39
 cnum = 2            # number of convolutions
 mnum = 2            # highest power each convolution
-nTrainSteps = 10000
+nTrainSteps = 50000
 
 nterm = mnum**cnum  # total number of polynomial terms
 
