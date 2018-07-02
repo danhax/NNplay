@@ -5,5 +5,8 @@ FifthTry.py  :  With MonPwr logic, polynomials after convolution, then relu
 
 SixthTry.py :  MonPwr removed, just convolutions not polynomials thereof
 
+SeventhTry : with softmax summed over pixels works with smaller clen
+
+
 
 
