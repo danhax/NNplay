@@ -1,37 +1,12 @@
 #!/usr/local/bin/python3.6
 
-#######   settings     #######
-
-xrange     = 4
-nper       = 10
-ntrain    = 5000
-ntest     = 5000
-
-nTrainSteps = 5000
-
-clen = 40
-
-###
-
-NUMC = 3           # number of convolutions
-NUMP = 20          # number of polynomials before relu
-
-startC = NUMC
-startP = NUMP
-
 ##############################
 
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 
-###### x-values at which to evaluate the functions
-
-nx    = xrange * nper
-xdata = np.arange(xrange*nper)/nper
-xdata = np.reshape(xdata,(nx,1))
-
-nc = nx + 1 - clen;
+############# FUNCTIONS ################
 
 ######  positive-valued functions
 
@@ -46,20 +21,6 @@ def myexp(x):
 
 def myrand(x):
   return np.exp(np.random.normal(x*0))
-
-DORAND = False
-if DORAND:
-  funclist = [mysin,myquad,myexp,myrand]
-else:
-  funclist = [mysin,myquad,myexp]
-nfunc    = len(funclist)
-if DORAND:
-  nfunctest = nfunc-1
-else:
-  nfunctest = nfunc
-
-# get the positive-valued functions ydata(nx,ntrain)
-#   with random parameters
 
 def yfunc(ifuncs,xvals,xshift,xfac,yshift,yfac):
   # positive-valued function
@@ -84,46 +45,12 @@ def getdata(functype):
   ydata  = yfunc(functype,xdata,xshift,xfac,yshift,yfac)
   return ydata
 
-######  random functions for train and test
-
-# output to fit for training
-Ftrain_fit = tf.placeholder(tf.float64, shape=(nfunc,ntrain))
-
-# input
-Ytrain_fit = tf.placeholder(tf.float64, shape=(ntrain,nx))
-
-functype_train = np.random.choice(nfunc,ntrain)
-
-functype_test  = np.random.choice(nfunctest,ntest)
-
-functype_train = np.reshape(functype_train,(ntrain,))
-
-ftrain_actual          = np.zeros([nfunc,ntrain])
-for ivec in range(ntrain):
-  ftrain_actual[functype_train[ivec],ivec] = 1
-
-ftest_actual          = np.zeros([nfunc,ntest])
-for ivec in range(ntest):
-  ftest_actual[functype_test[ivec],ivec] = 1
-
-ytrain_actual = getdata(functype_train)
-ytest_actual  = getdata(functype_test)
-
-ytrain_actual = np.transpose(ytrain_actual)
-ytest_actual = np.transpose(ytest_actual)
-
-# for ivec in range(ntrain):
-#   plt.scatter(xdata,ytrain_actual[:,ivec])
-# plt.show()
-
 #####   TENSORFLOW functions:
 
 def myconv(inp,C):
 
-  # want NWC inp(nvec, inlen, 1)    nbatch=nvec  width=inlen
-  #          C   clen,1,cnum)
   # input
-  #   inp(nx,nvec)
+  #   inp(nvec,nx)
   #   C(clen,cnum)
   # output
   #   outp(nc,nvec,cnum)
@@ -131,15 +58,16 @@ def myconv(inp,C):
   cnum = C.shape[1]
 
   nvec = inp.shape[0]
+  nx   = inp.shape[1]
   inp=tf.reshape(inp,(nvec,nx,1))
-  C  =tf.reshape(C,                (clen,1,cnum))
+  C  =tf.reshape(C,  (clen,1,cnum))
 
   outp = tf.nn.conv1d(inp,C,1,'VALID')
   # have outp(nvec, nc, cnum)
   
   return outp
 
-def myNNfunc(Im,inC,inT,inW,cnum,pnum):
+def myNNfunc(Im,inC,inT,inW):
   # Im(nvec,nx)
   # C(clen,cnum)         convolve Im
   # T(cnum,pnum)
@@ -147,8 +75,17 @@ def myNNfunc(Im,inC,inT,inW,cnum,pnum):
   # out(nfunc,nvec)      0 to 1
   
   nvec = Im.shape[0]
+  nx = Im.shape[1]
+  clen = inC.shape[0]
+  cnum = inC.shape[1]
+  pnum = inT.shape[1]
+  nfunc = inW.shape[1]
+  nc = nx + 1 - clen
+  
   Im = Im - tf.reshape(tf.reduce_mean(Im,axis=(1)),(nvec,1))
   Im = Im / tf.reshape(tf.sqrt(tf.reduce_mean(Im**2,axis=1)),(nvec,1))
+
+  imList = [Im]
   
   # Conved(nvec,nc,cnum)
   Conved = myconv(Im,inC)
@@ -173,11 +110,6 @@ def myNNfunc(Im,inC,inT,inW,cnum,pnum):
 
   return Max
 
-#
-# NN PARAMETERS TO TRAIN
-#       C, T, W
-#
-
 def DOIT(cnum,pnum,Cinit,Tinit,Winit):
   # Cinit(clen,cnum)
   # Tinit(cnum,pnum)
@@ -189,23 +121,23 @@ def DOIT(cnum,pnum,Cinit,Tinit,Winit):
 
   ######      TRAIN    ######
 
-  Ftrain_NN = myNNfunc(Ytrain_fit,C,T,W,cnum,pnum)
+  Ftrain_NN = myNNfunc(Y_fit,C,T,W)
 
   # error for each sample
   train_lossper = tf.reshape(
-  #  tf.reduce_sum(tf.abs(Ftrain_fit-Ftrain_NN),axis=0),(1,ntrain))
-    tf.reduce_sum((Ftrain_fit-Ftrain_NN)**2/2,axis=0),(1,ntrain))
+  #  tf.reduce_sum(tf.abs(F_fit-Ftrain_NN),axis=0),(1,nvec))
+    tf.reduce_sum((F_fit-Ftrain_NN)**2/2,axis=0),(1,nvec))
   # summed over samples
   train_LOSS = tf.reduce_mean(train_lossper);
 
-  OPT_train = tf.train.AdamOptimizer(
+  OPT = tf.train.AdamOptimizer(
     learning_rate=0.0002,beta1=0.9,beta2=0.99,
     ).minimize(train_LOSS)
 
-  # OPT_train = tf.train.GradientDescentOptimizer(
+  # OPT = tf.train.GradientDescentOptimizer(
   #   learning_rate=0.001).minimize(train_LOSS)
   
-  # OPT_train = tf.train.RMSPropOptimizer(
+  # OPT = tf.train.RMSPropOptimizer(
   #   learning_rate=0.0003).minimize(train_LOSS)
 
   with tf.Session() as sess:
@@ -215,29 +147,108 @@ def DOIT(cnum,pnum,Cinit,Tinit,Winit):
 
       _, train_loss_, train_lossper_, \
         Ftrain_NN_, C_, T_, W_ = sess.run(
-        [OPT_train,train_LOSS,train_lossper,Ftrain_NN,C,T,W]
-        ,feed_dict={Ytrain_fit:ytrain_actual,Ftrain_fit:ftrain_actual})
+        [OPT,train_LOSS,train_lossper,Ftrain_NN,C,T,W]
+        ,feed_dict={Y_fit:ytrain_actual,F_fit:ftrain_actual})
       if np.mod(istep,100)==0:
         test_loss_, test_errorper, Ftest_NN_ = sess.run(
           [train_LOSS, train_lossper, Ftrain_NN]
-          ,feed_dict={Ytrain_fit:ytest_actual,Ftrain_fit:ftest_actual})
+          ,feed_dict={Y_fit:ytest_actual,F_fit:ftest_actual})
         
-        besttrain = np.reshape(np.argmax(Ftrain_NN_,axis=0),(1,ntrain))
-        besttest = np.reshape(np.argmax(Ftest_NN_[0:nfunctest,:],axis=0),(1,ntest))
-        train_error = np.sum([functype_train != besttrain]) / ntrain
-        test_error = np.sum([functype_test != besttest]) / ntest
+        besttrain = np.reshape(np.argmax(Ftrain_NN_,axis=0),(1,nvec))
+        besttest = np.reshape(np.argmax(Ftest_NN_[0:nfunctest,:],axis=0),(1,nvec))
+        train_error = np.sum([functype_train != besttrain]) / nvec
+        test_error = np.sum([functype_test != besttest]) / nvec
         
         print(' step %i of %i  loss %.7s %.7s  errorRate %.7s %.7s'%(
           istep,nTrainSteps,train_loss_,test_loss_,train_error,test_error))
 
 
-  plt.scatter(np.arange(ntest),test_errorper)
+  plt.scatter(np.arange(nvec),test_errorper)
   plt.show()
   plt.scatter(functype_test,test_errorper)
   plt.show()
   input('#press enter')
 
   return C_, T_, W_
+
+######  END FUNCTIONS #########
+
+
+#######   settings     #######
+
+xrange     = 4
+nper       = 10
+nvec       = 5000
+
+nTrainSteps = 5000
+
+clen = 12
+
+###
+
+NUMC = 4           # number of convolutions
+NUMP = 20          # number of polynomials before relu
+
+startC = NUMC
+startP = NUMP
+
+###### x-values at which to evaluate the functions
+
+nx    = xrange * nper
+xdata = np.arange(xrange*nper)/nper
+xdata = np.reshape(xdata,(nx,1))
+
+nc = nx + 1 - clen;
+
+# get the positive-valued functions ydata(nx,nvec)
+#   with random parameters
+
+DORAND = False
+if DORAND:
+  funclist = [mysin,myquad,myexp,myrand]
+else:
+  funclist = [mysin,myquad,myexp]
+nfunc    = len(funclist)
+if DORAND:
+  nfunctest = nfunc-1
+else:
+  nfunctest = nfunc
+
+
+######  random functions for train and test
+
+# output to fit for training
+F_fit = tf.placeholder(tf.float64, shape=(nfunc,nvec))
+
+# input
+Y_fit = tf.placeholder(tf.float64, shape=(nvec,nx))
+
+functype_train = np.random.choice(nfunc,nvec)
+
+functype_test  = np.random.choice(nfunctest,nvec)
+
+ftrain_actual          = np.zeros([nfunc,nvec])
+for ivec in range(nvec):
+  ftrain_actual[functype_train[ivec],ivec] = 1
+
+ftest_actual          = np.zeros([nfunc,nvec])
+for ivec in range(nvec):
+  ftest_actual[functype_test[ivec],ivec] = 1
+
+ytrain_actual = getdata(functype_train)
+ytest_actual  = getdata(functype_test)
+
+ytrain_actual = np.transpose(ytrain_actual)
+ytest_actual = np.transpose(ytest_actual)
+
+# for ivec in range(nvec):
+#   plt.scatter(xdata,ytrain_actual[:,ivec])
+# plt.show()
+
+#
+# NN PARAMETERS TO TRAIN
+#       C, T, W
+#
 
 cnum = startC
 pnum = startP
