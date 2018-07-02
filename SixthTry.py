@@ -7,16 +7,16 @@ nper       = 10
 ntrain    = 5000
 ntest     = 5000
 
-nTrainSteps = 10000
+nTrainSteps = 1000
 
 clen = 40
 
 ###
 
-NUMC = 5            # number of convolutions
+NUMC = 2           # number of convolutions
 NUMP = 20          # number of polynomials before relu
 
-startC = NUMC-3
+startC = NUMC
 startP = NUMP
 
 ##############################
@@ -146,16 +146,11 @@ def myNNfunc(Im,inC,inT,inW,cnum,pnum):
   nvec = Im.shape[1]
 
   Im = Im - tf.reduce_mean(Im,axis=(0));
-  Im = Im / tf.sqrt(tf.reduce_sum(Im**2,axis=0))
-
+  Im = Im / tf.sqrt(tf.reduce_mean(Im**2,axis=0))
+  
   # Conved(nc,nvec,cnum)
   Conved = myconv(Im,inC)
   
-  # Conved = Conved - tf.reshape(
-  #   tf.reduce_mean(Conved,axis=(0)),(1,nvec,cnum))
-  # Conved = Conved / tf.reshape(
-  #   tf.sqrt(tf.reduce_sum(Conved**2,axis=(0))),(1,nvec,cnum))
-
   Terms = Conved;
   
   # T(cnum,pnum)  ->  Poly(nc,nvec,pnum)
@@ -180,6 +175,7 @@ def myNNfunc(Im,inC,inT,inW,cnum,pnum):
 
 #
 # NN PARAMETERS TO TRAIN
+#       C, T, W
 #
 
 def DOIT(cnum,pnum,Cinit,Tinit,Winit):
@@ -190,14 +186,6 @@ def DOIT(cnum,pnum,Cinit,Tinit,Winit):
   C = tf.Variable(Cinit)
   T = tf.Variable(Tinit)
   W = tf.Variable(Winit)
-
-  #with tf.variable_scope('noog', reuse=tf.AUTO_REUSE):
-  #  C = tf.get_variable('C',dtype=tf.float64,
-  #       initializer = tf.constant(Cinit))
-  #  T = tf.get_variable('T',dtype=tf.float64,
-  #       initializer = tf.constant(Tinit))
-  #  W = tf.get_variable('W',dtype=tf.float64,
-  #       initializer = tf.constant(Winit))
 
   ######      TRAIN    ######
 
@@ -244,16 +232,6 @@ def DOIT(cnum,pnum,Cinit,Tinit,Winit):
 
   besttrain = np.reshape(np.argmax(Ftrain_NN_,axis=0),(1,ntrain))
 
-  # print('TRAIN: actual, bestguess, error')
-  # print(np.array2string(np.transpose(np.concatenate(
-  #   (functype_train[trainindex], besttrain, train_lossper_))),
-  #   formatter={'float_kind':lambda x: '%.4f' % x}))
-
-  # plt.scatter(trainindex,train_lossper_)
-  # plt.show()
-  # plt.scatter(functype_train[trainindex],train_lossper_)
-  # plt.show()
-
   ######      TEST    ######
 
   Ftest_NN = myNNfunc(ytest_actual,C_,T_,W_,cnum,pnum)
@@ -271,11 +249,6 @@ def DOIT(cnum,pnum,Cinit,Tinit,Winit):
     np.sum((ftest_actual-Ftest_NN_)**2,axis=0),(1,ntest))
 
   besttest = np.reshape(np.argmax(Ftest_NN_[0:nfunctest,:],axis=0),(1,ntest))
-
-  # print('TEST: actual, bestguess,error')
-  # print(np.array2string(np.transpose(np.concatenate(
-  #   (functype_test[testindex], besttest, test_errorper))),
-  #   formatter={'float_kind':lambda x: '%.4f' % x}))
 
   noog = np.sum([functype_train[trainindex] != besttrain]) / ntrain
   print('TRAIN error rate: ',noog)
