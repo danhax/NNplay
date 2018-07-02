@@ -7,13 +7,13 @@ nper       = 10
 ntrain    = 5000
 ntest     = 5000
 
-nTrainSteps = 10000
+nTrainSteps = 1000
 
 clen = 40
 
 ###
 
-NUMC = 3            # number of convolutions
+NUMC = 2            # number of convolutions
 NUMP = 20          # number of polynomials before relu
 
 startC = NUMC
@@ -136,15 +136,10 @@ def myconv(inp,C):
 
   return outp
 
-def getBasis(cnum) :
-  nterm = cnum
-  MonPwr = np.identity(cnum)
-  return nterm, MonPwr
-
 def myNNfunc(Im,inC,inT,inW,cnum,pnum):
   # Im(nx,nvec)
   # C(clen,cnum)         convolve Im
-  # T(nterm,pnum)
+  # T(cnum,pnum)
   # W(pnum,nfunc)   linear transform polynomials to response functions
   # out(nfunc,nvec)      0 to 1
   
@@ -161,17 +156,9 @@ def myNNfunc(Im,inC,inT,inW,cnum,pnum):
   # Conved = Conved / tf.reshape(
   #   tf.sqrt(tf.reduce_sum(Conved**2,axis=(0))),(1,nvec,cnum))
 
-  # MonPwr(cnum,nterm)
-  nterm, MonPwr = getBasis(cnum)
+  Terms = Conved;
   
-  Terms = tf.reduce_sum(
-    tf.reshape(Conved,(nc,nvec,cnum,1)) ** \
-    tf.reshape(MonPwr,(1,1,cnum,nterm)), axis=(2))
-
-  # Terms(nc,nvec,nterm)
-  Terms = tf.reshape( Terms, (nc,nvec,nterm) )
-
-  # T(nterm,pnum)  ->  Poly(nc,nvec,pnum)
+  # T(cnum,pnum)  ->  Poly(nc,nvec,pnum)
   Poly = tf.tensordot(Terms,inT,axes=((2),(0)))
 
   Poly = tf.nn.relu(Poly)
@@ -197,10 +184,8 @@ def myNNfunc(Im,inC,inT,inW,cnum,pnum):
 
 def DOIT(cnum,pnum,Cinit,Tinit,Winit):
   # Cinit(clen,cnum)
-  # Tinit(nterm,pnum)
+  # Tinit(cnum,pnum)
   # Winit(pnum,nfunc)
-
-  nterm = getBasis(cnum)
 
   C = tf.Variable(Cinit)
   T = tf.Variable(Tinit)
@@ -308,16 +293,13 @@ def DOIT(cnum,pnum,Cinit,Tinit,Winit):
 cnum = startC
 pnum = startP
 
-nterm, _ = getBasis(cnum)
 Cinit = np.random.normal(np.zeros((clen,cnum)))
-Tinit = np.random.normal(np.zeros((nterm,pnum)))
+Tinit = np.random.normal(np.zeros((cnum,pnum)))
 Winit = np.random.normal(np.zeros((pnum,nfunc)))
 
 doflag = True
 while doflag :
     
-  nterm0, MonPwr0 = getBasis(cnum)
-
   Cfinal, Tfinal, Wfinal = DOIT(cnum,pnum,Cinit,Tinit,Winit)
 
   doflag = cnum < NUMC or pnum < NUMP
@@ -328,37 +310,18 @@ while doflag :
   cnum = np.min((cnum+1,NUMC))
   pnum = np.min((pnum+1,NUMP))
 
-  # MonPwr(cnum,nterm)
-  nterm, MonPwr = getBasis(cnum)
-  
   Cinit = np.zeros((clen,cnum))
-  Tinit = np.zeros((nterm,pnum))
+  Tinit = np.zeros((cnum,pnum))
   Winit = np.zeros((pnum,nfunc))
   
   Cinit = np.random.normal(np.zeros((clen,cnum)))
 
-  # transform from terms to poly
-  # Tinit[:,pprev:pnum] = np.random.normal(np.zeros((nterm,pnum-pprev)))
-  
-  # transform from poly to func
-  # Winit[pprev:pnum,:] = np.random.normal(np.zeros((pprev-pnum,nfunc)))
-
   Cinit[:,0:cprev] = Cfinal
   Winit[0:pprev,:] = Wfinal
 
-  for iterm in np.arange(nterm0):
-    tflag = False
-    for jterm in np.arange(nterm):
-      if np.all(MonPwr0[:,iterm] == MonPwr[0:cprev,jterm]) and \
-         np.all(MonPwr[cprev:cnum,jterm] ==0) :
-        assert not tflag
-        kterm = jterm
-        tflag = True
-        # break
-    assert tflag
-    jterm = kterm
-    Tinit[jterm,0:pprev] = Tfinal[iterm,:]
-    Tinit[jterm,pprev:pnum] = np.random.normal(np.zeros(1,pnum-pprev))
+  Tinit[0:cprev,0:pprev] = Tfinal
+  Tinit[0:cprev,pprev:pnum] = np.random.normal(np.zeros((cprev,pnum-pprev)))
+  
 exit()
 
 
