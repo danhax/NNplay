@@ -198,7 +198,7 @@ def DOIT(cnum,pnum,Cinit,Tinit,Winit):
     # error for each sample
     train_lossper = tf.reshape(
     #  tf.reduce_sum(tf.abs(Ftrain_fit-Ftrain_NN),axis=0),(1,ntrain))
-      tf.reduce_sum((Ftrain_fit-Ftrain_NN)**2,axis=0),(1,ntrain))
+      tf.reduce_sum((Ftrain_fit-Ftrain_NN)**2/2,axis=0),(1,ntrain))
     # summed over samples
     train_LOSS = tf.reduce_mean(train_lossper);
   else:
@@ -219,11 +219,6 @@ def DOIT(cnum,pnum,Cinit,Tinit,Winit):
   with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
 
-    train_loss_ = sess.run(
-      train_LOSS,
-      feed_dict={Ytrain_fit:ytrain_actual,Ftrain_fit:ftrain_actual})
-    print('LOSS: %s  step %i of %i'%(train_loss_,0,nTrainSteps))
-    
     for istep in range(nTrainSteps):
 
       _, train_loss_, train_lossper_, \
@@ -231,39 +226,22 @@ def DOIT(cnum,pnum,Cinit,Tinit,Winit):
         [OPT_train,train_LOSS,train_lossper,Ftrain_NN,C,T,W]
         ,feed_dict={Ytrain_fit:ytrain_actual,Ftrain_fit:ftrain_actual})
       if np.mod(istep,100)==0:
-        print('loss: %s  step %i of %i'%(train_loss_,istep,nTrainSteps))
+        test_loss_, test_errorper, Ftest_NN_ = sess.run(
+          [train_LOSS, train_lossper, Ftrain_NN]
+          ,feed_dict={Ytrain_fit:ytest_actual,Ftrain_fit:ftest_actual})
+        
+        besttrain = np.reshape(np.argmax(Ftrain_NN_,axis=0),(1,ntrain))
+        besttest = np.reshape(np.argmax(Ftest_NN_[0:nfunctest,:],axis=0),(1,ntest))
+        train_error = np.sum([functype_train != besttrain]) / ntrain
+        test_error = np.sum([functype_test != besttest]) / ntest
+        
+        print(' step %i of %i  loss %.7s %.7s  errorRate %.7s %.7s'%(
+          istep,nTrainSteps,train_loss_,test_loss_,train_error,test_error))
 
-  trainindex = np.arange(ntrain);
-  trainindex = np.reshape(trainindex,(1,ntrain))
 
-  besttrain = np.reshape(np.argmax(Ftrain_NN_,axis=0),(1,ntrain))
-
-  ######      TEST    ######
-
-  Ftest_NN = myNNfunc(ytest_actual,C_,T_,W_,cnum,pnum)
-  with tf.Session() as sess:
-    sess.run(tf.global_variables_initializer())
-    Ftest_NN_ = sess.run(Ftest_NN)
-
-  Ftest_NN_ = np.array(Ftest_NN_)
-
-  testindex = np.arange(ntest);
-  testindex = np.reshape(testindex,(1,ntest))
-
-  # (nfunc,nvec)
-  test_errorper = np.reshape(
-    np.sum((ftest_actual-Ftest_NN_)**2,axis=0),(1,ntest))
-
-  besttest = np.reshape(np.argmax(Ftest_NN_[0:nfunctest,:],axis=0),(1,ntest))
-
-  noog = np.sum([functype_train[trainindex] != besttrain]) / ntrain
-  print('TRAIN error rate: ',noog)
-  noog = np.sum([functype_test[testindex] != besttest]) / ntest
-  print(' TEST error rate: ',noog)
-
-  plt.scatter(testindex,test_errorper)
+  plt.scatter(np.arange(ntest),test_errorper)
   plt.show()
-  plt.scatter(functype_test[testindex],test_errorper)
+  plt.scatter(functype_test,test_errorper)
   plt.show()
   input('press enter')
 
