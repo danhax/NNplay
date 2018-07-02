@@ -7,16 +7,16 @@ nper       = 10
 ntrain    = 5000
 ntest     = 5000
 
-nTrainSteps = 10000
+nTrainSteps = 5000
 
-clen = 10
+clen = 40
 
 ###
 
 NUMC = 3           # number of convolutions
 NUMP = 20          # number of polynomials before relu
 
-startC = NUMC-1
+startC = NUMC
 startP = NUMP
 
 ##############################
@@ -41,14 +41,17 @@ def myquad(x):
 def mysin(x):
   return np.sin(16.28*x/xrange)**2
 
+def myexp(x):
+  return np.exp(2*x/xrange)
+
 def myrand(x):
   return np.exp(np.random.normal(x*0))
 
 DORAND = False
 if DORAND:
-  funclist = [mysin,myquad,myrand]
+  funclist = [mysin,myquad,myexp,myrand]
 else:
-  funclist = [mysin,myquad]
+  funclist = [mysin,myquad,myexp]
 nfunc    = len(funclist)
 if DORAND:
   nfunctest = nfunc-1
@@ -131,9 +134,6 @@ def myconv(inp,C):
   outp = tf.nn.conv1d(inp,C,1,'VALID')
   # have outp(nvec, nc, cnum)
   
-  outp = tf.transpose(outp,perm=[1,0,2])
-  # now have outp(nc,nvec,cnum)
-
   return outp
 
 def myNNfunc(Im,inC,inT,inW,cnum,pnum):
@@ -144,34 +144,27 @@ def myNNfunc(Im,inC,inT,inW,cnum,pnum):
   # out(nfunc,nvec)      0 to 1
   
   nvec = Im.shape[1]
-
+  
   Im = Im - tf.reduce_mean(Im,axis=(0));
   Im = Im / tf.sqrt(tf.reduce_mean(Im**2,axis=0))
   
-  # Conved(nc,nvec,cnum)
+  # Conved(nvec,nc,cnum)
   Conved = myconv(Im,inC)
   
   Terms = Conved;
   
-  # T(cnum,pnum)  ->  Poly(nc,nvec,pnum)
+  # T(cnum,pnum)  ->  Poly(nvec,nc,pnum)
   Poly = tf.tensordot(Terms,inT,axes=((2),(0)))
 
   Poly = tf.nn.relu(Poly)
 
-  # Poly = tf.abs(Poly)
-  
-  # W(pnum,nfunc)  ->  Func(nc,nvec,nfunc)
-
+  # W(pnum,nfunc)  ->  Func(nvec,nc,nfunc)
   Func = tf.tensordot(Poly,inW,axes=((2),(0)))  
 
-  Func = tf.transpose(Func,perm=[1,2,0])
   Func = tf.reshape(Func,(nvec,nfunc*nc))
   Sigmoid = tf.nn.softmax(Func,1)
-  Sigmoid = tf.reshape(Sigmoid,(nvec,nfunc,nc))
-  Max = tf.reshape(tf.reduce_sum(Sigmoid,axis=2),(nvec,nfunc))
-
-  # Sigmoid = tf.nn.softmax(Func,2)
-  # Max = tf.reshape(tf.reduce_max(Sigmoid,axis=0),(nvec,nfunc))
+  Sigmoid = tf.reshape(Sigmoid,(nvec,nc,nfunc))
+  Max = tf.reshape(tf.reduce_sum(Sigmoid,axis=1),(nvec,nfunc))
 
   # Max(nfunc,nvec)
   Max = tf.transpose(Max)
@@ -196,17 +189,12 @@ def DOIT(cnum,pnum,Cinit,Tinit,Winit):
 
   Ftrain_NN = myNNfunc(Ytrain_fit,C,T,W,cnum,pnum)
 
-  if 1==1:
-    # error for each sample
-    train_lossper = tf.reshape(
-    #  tf.reduce_sum(tf.abs(Ftrain_fit-Ftrain_NN),axis=0),(1,ntrain))
-      tf.reduce_sum((Ftrain_fit-Ftrain_NN)**2/2,axis=0),(1,ntrain))
-    # summed over samples
-    train_LOSS = tf.reduce_mean(train_lossper);
-  else:
-    train_lossper = tf.zeros((1,ntrain))
-    train_LOSS = tf.losses.sparse_softmax_cross_entropy(
-      functype_train,tf.transpose(Ftrain_NN))
+  # error for each sample
+  train_lossper = tf.reshape(
+  #  tf.reduce_sum(tf.abs(Ftrain_fit-Ftrain_NN),axis=0),(1,ntrain))
+    tf.reduce_sum((Ftrain_fit-Ftrain_NN)**2/2,axis=0),(1,ntrain))
+  # summed over samples
+  train_LOSS = tf.reduce_mean(train_lossper);
 
   OPT_train = tf.train.AdamOptimizer(
     learning_rate=0.0002,beta1=0.9,beta2=0.99,
