@@ -13,12 +13,10 @@ clen = 40
 
 ###
 
-NUMC = 2            # number of convolutions
-NUMM = 2            # highest power each convolution plus one
+NUMC = 3            # number of convolutions
 NUMP = 20          # number of polynomials before relu
 
 startC = NUMC
-startM = NUMM
 startP = NUMP
 
 ##############################
@@ -138,23 +136,12 @@ def myconv(inp,C):
 
   return outp
 
-def getBasis(cnum,mnum) :
-  nterm = mnum**cnum
-  
-  # MonPwr(cnum,nterm)
-  MonPwr = np.mod( np.floor(
-    np.reshape( np.arange(nterm),     (1,nterm) ) /
-    np.reshape( mnum**np.arange(cnum), (cnum,1) ) ), mnum)
-
-  okmon = np.sum(MonPwr,0) < mnum
-  MonPwr = MonPwr[:,okmon]
-  okmon = np.sum(MonPwr,0) > 0
-  MonPwr = MonPwr[:,okmon]
-
-  nterm = MonPwr.shape[1]
+def getBasis(cnum) :
+  nterm = cnum
+  MonPwr = np.identity(cnum)
   return nterm, MonPwr
 
-def myNNfunc(Im,inC,inT,inW,cnum,mnum,pnum):
+def myNNfunc(Im,inC,inT,inW,cnum,pnum):
   # Im(nx,nvec)
   # C(clen,cnum)         convolve Im
   # T(nterm,pnum)
@@ -175,7 +162,7 @@ def myNNfunc(Im,inC,inT,inW,cnum,mnum,pnum):
   #   tf.sqrt(tf.reduce_sum(Conved**2,axis=(0))),(1,nvec,cnum))
 
   # MonPwr(cnum,nterm)
-  nterm, MonPwr = getBasis(cnum,mnum)
+  nterm, MonPwr = getBasis(cnum)
   
   Terms = tf.reduce_sum(
     tf.reshape(Conved,(nc,nvec,cnum,1)) ** \
@@ -208,12 +195,12 @@ def myNNfunc(Im,inC,inT,inW,cnum,mnum,pnum):
 # NN PARAMETERS TO TRAIN
 #
 
-def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
+def DOIT(cnum,pnum,Cinit,Tinit,Winit):
   # Cinit(clen,cnum)
   # Tinit(nterm,pnum)
   # Winit(pnum,nfunc)
 
-  nterm = getBasis(cnum,mnum)
+  nterm = getBasis(cnum)
 
   C = tf.Variable(Cinit)
   T = tf.Variable(Tinit)
@@ -229,7 +216,7 @@ def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
 
   ######      TRAIN    ######
 
-  Ftrain_NN = myNNfunc(Ytrain_fit,C,T,W,cnum,mnum,pnum)
+  Ftrain_NN = myNNfunc(Ytrain_fit,C,T,W,cnum,pnum)
 
   if 1==1:
     # error for each sample
@@ -284,7 +271,7 @@ def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
 
   ######      TEST    ######
 
-  Ftest_NN = myNNfunc(ytest_actual,C_,T_,W_,cnum,mnum,pnum)
+  Ftest_NN = myNNfunc(ytest_actual,C_,T_,W_,cnum,pnum)
   with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
     Ftest_NN_ = sess.run(Ftest_NN)
@@ -319,10 +306,9 @@ def DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit):
   return C_, T_, W_
 
 cnum = startC
-mnum = startM
 pnum = startP
 
-nterm, _ = getBasis(cnum,mnum)
+nterm, _ = getBasis(cnum)
 Cinit = np.random.normal(np.zeros((clen,cnum)))
 Tinit = np.random.normal(np.zeros((nterm,pnum)))
 Winit = np.random.normal(np.zeros((pnum,nfunc)))
@@ -330,22 +316,20 @@ Winit = np.random.normal(np.zeros((pnum,nfunc)))
 doflag = True
 while doflag :
     
-  nterm0, MonPwr0 = getBasis(cnum,mnum)
+  nterm0, MonPwr0 = getBasis(cnum)
 
-  Cfinal, Tfinal, Wfinal = DOIT(cnum,mnum,pnum,Cinit,Tinit,Winit)
+  Cfinal, Tfinal, Wfinal = DOIT(cnum,pnum,Cinit,Tinit,Winit)
 
-  doflag = cnum < NUMC or pnum < NUMP or mnum < NUMM
+  doflag = cnum < NUMC or pnum < NUMP
 
   cprev = cnum
-  mprev = mnum
   pprev = pnum
   
   cnum = np.min((cnum+1,NUMC))
-  mnum = np.min((mnum+1,NUMM))
   pnum = np.min((pnum+1,NUMP))
 
   # MonPwr(cnum,nterm)
-  nterm, MonPwr = getBasis(cnum,mnum)
+  nterm, MonPwr = getBasis(cnum)
   
   Cinit = np.zeros((clen,cnum))
   Tinit = np.zeros((nterm,pnum))
