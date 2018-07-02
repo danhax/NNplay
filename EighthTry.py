@@ -93,7 +93,7 @@ def myNNfunc(Im,inC,inT,inW):
   Im = Im - tf.reshape(tf.reduce_mean(Im,axis=(1)),(nvec,1))
   Im = Im / tf.reshape(tf.sqrt(tf.reduce_mean(Im**2,axis=1)),(nvec,1))
 
-  imList = [Im]
+  # imList = [Im*0,Im]
   
   # Conved(nvec,nc,cnum)
   Conved = myconv(Im,inC)
@@ -119,8 +119,9 @@ def myNNfunc(Im,inC,inT,inW):
   return Max
 
 def DOIT(nTrainSteps,
-         cnum,pnum,Cinit,Tinit,Winit,Y_fit,
-         ytrain_actual,ytest_actual,F_fit,ftrain_actual,ftest_actual,
+         cnum,pnum,Cinit,Tinit,Winit,
+         Y_fit,ytrain_actual,ytest_actual,
+         F_fit,ftrain_actual,ftest_actual,
          functype_train,functype_test):
   # Cinit(clen,cnum)
   # Tinit(cnum,pnum)
@@ -168,13 +169,18 @@ def DOIT(nTrainSteps,
           [train_LOSS, train_lossper, Ftrain_NN]
           ,feed_dict={Y_fit:ytest_actual,F_fit:ftest_actual})
         
-        besttrain = np.reshape(np.argmax(Ftrain_NN_,axis=0),(1,nvec))
-        besttest = np.reshape(np.argmax(Ftest_NN_[0:nfunc,:],axis=0),(1,nvec))
-        train_error = np.sum([functype_train != besttrain]) / nvec
-        test_error = np.sum([functype_test != besttest]) / nvec
+        besttrain = np.reshape(
+          np.argmax(Ftrain_NN_,axis=0),(1,nvec))
+        besttest = np.reshape(
+          np.argmax(Ftest_NN_[0:nfunc,:],axis=0),(1,nvec))
+        train_error = np.sum(
+          [functype_train != besttrain]) / nvec
+        test_error = np.sum(
+          [functype_test != besttest]) / nvec
         
         print(' step %i of %i  loss %.7s %.7s  errorRate %.7s %.7s'%(
-          istep,nTrainSteps,train_loss_,test_loss_,train_error,test_error))
+          istep,nTrainSteps,train_loss_,
+          test_loss_,train_error,test_error))
 
 
   plt.scatter(np.arange(nvec),test_errorper)
@@ -261,8 +267,9 @@ def main():
   doflag = True
   while doflag :
 
-    Cfinal, Tfinal, Wfinal = DOIT(nTrainSteps,
-      cnum,pnum,Cinit,Tinit,Winit,Y_fit,ytrain_actual,ytest_actual,
+    Cfinal, Tfinal, Wfinal = DOIT(
+      nTrainSteps,cnum,pnum,Cinit,Tinit,Winit,
+      Y_fit,ytrain_actual,ytest_actual,
       F_fit,ftrain_actual,ftest_actual,
       functype_train,functype_test)
     doflag = cnum < NUMC or pnum < NUMP
@@ -284,7 +291,8 @@ def main():
     Winit[0:pprev,:] = Wfinal
 
     Tinit[0:cprev,0:pprev] = Tfinal
-    # Tinit[0:cprev,pprev:pnum] = np.random.normal(np.zeros((cprev,pnum-pprev)))
+    # Tinit[0:cprev,pprev:pnum] =
+    #   np.random.normal(np.zeros((cprev,pnum-pprev)))
     Tinit[:,pprev:pnum] = np.random.normal(np.zeros((cnum,pnum-pprev)))
   
 main()
