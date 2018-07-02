@@ -7,16 +7,16 @@ nper       = 10
 ntrain    = 5000
 ntest     = 5000
 
-nTrainSteps = 50000
+nTrainSteps = 10000
 
-clen = 40
+clen = 10
 
 ###
 
-NUMC = 2           # number of convolutions
+NUMC = 3           # number of convolutions
 NUMP = 20          # number of polynomials before relu
 
-startC = NUMC
+startC = NUMC-1
 startP = NUMP
 
 ##############################
@@ -164,12 +164,14 @@ def myNNfunc(Im,inC,inT,inW,cnum,pnum):
 
   Func = tf.tensordot(Poly,inW,axes=((2),(0)))  
 
-  # PWR = 10;
-  # Sigmoid = Func**PWR/tf.reshape(tf.reduce_sum(Func**PWR,2),(nc,nvec,1))
-  
-  Sigmoid = tf.nn.softmax(Func,2)
+  Func = tf.transpose(Func,perm=[1,2,0])
+  Func = tf.reshape(Func,(nvec,nfunc*nc))
+  Sigmoid = tf.nn.softmax(Func,1)
+  Sigmoid = tf.reshape(Sigmoid,(nvec,nfunc,nc))
+  Max = tf.reshape(tf.reduce_sum(Sigmoid,axis=2),(nvec,nfunc))
 
-  Max = tf.reshape(tf.reduce_max(Sigmoid,axis=0),(nvec,nfunc))
+  # Sigmoid = tf.nn.softmax(Func,2)
+  # Max = tf.reshape(tf.reduce_max(Sigmoid,axis=0),(nvec,nfunc))
 
   # Max(nfunc,nvec)
   Max = tf.transpose(Max)
@@ -219,7 +221,7 @@ def DOIT(cnum,pnum,Cinit,Tinit,Winit):
   with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
 
-    for istep in range(nTrainSteps):
+    for istep in range(nTrainSteps+1):
 
       _, train_loss_, train_lossper_, \
         Ftrain_NN_, C_, T_, W_ = sess.run(
@@ -243,7 +245,7 @@ def DOIT(cnum,pnum,Cinit,Tinit,Winit):
   plt.show()
   plt.scatter(functype_test,test_errorper)
   plt.show()
-  input('press enter')
+  input('#press enter')
 
   return C_, T_, W_
 
@@ -272,12 +274,14 @@ while doflag :
   Winit = np.zeros((pnum,nfunc))
   
   Cinit = np.random.normal(np.zeros((clen,cnum)))
+  # Winit = np.random.normal(np.zeros((pnum,nfunc)))
 
   Cinit[:,0:cprev] = Cfinal
   Winit[0:pprev,:] = Wfinal
 
   Tinit[0:cprev,0:pprev] = Tfinal
-  Tinit[0:cprev,pprev:pnum] = np.random.normal(np.zeros((cprev,pnum-pprev)))
+  # Tinit[0:cprev,pprev:pnum] = np.random.normal(np.zeros((cprev,pnum-pprev)))
+  Tinit[:,pprev:pnum] = np.random.normal(np.zeros((cnum,pnum-pprev)))
   
 exit()
 
