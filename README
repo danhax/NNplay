@@ -3,5 +3,7 @@ FifthTry.py  :  With MonPwr logic, polynomials after convolution, then relu
                 As saved, with mnum = 2, and constant disallowed,
                 the polynomials are equal to the convolutions
 
+SixthTry.py :  MonPwr removed, just convolutions not polynomials thereof
+
 
 
