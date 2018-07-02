@@ -90,7 +90,7 @@ def getdata(functype):
 Ftrain_fit = tf.placeholder(tf.float64, shape=(nfunc,ntrain))
 
 # input
-Ytrain_fit = tf.placeholder(tf.float64, shape=(nx,ntrain))
+Ytrain_fit = tf.placeholder(tf.float64, shape=(ntrain,nx))
 
 functype_train = np.random.choice(nfunc,ntrain)
 
@@ -109,6 +109,9 @@ for ivec in range(ntest):
 ytrain_actual = getdata(functype_train)
 ytest_actual  = getdata(functype_test)
 
+ytrain_actual = np.transpose(ytrain_actual)
+ytest_actual = np.transpose(ytest_actual)
+
 # for ivec in range(ntrain):
 #   plt.scatter(xdata,ytrain_actual[:,ivec])
 # plt.show()
@@ -125,10 +128,10 @@ def myconv(inp,C):
   # output
   #   outp(nc,nvec,cnum)
 
-  nvec = inp.shape[1]
   cnum = C.shape[1]
 
-  inp=tf.reshape(tf.transpose(inp),(nvec,nx,1))
+  nvec = inp.shape[0]
+  inp=tf.reshape(inp,(nvec,nx,1))
   C  =tf.reshape(C,                (clen,1,cnum))
 
   outp = tf.nn.conv1d(inp,C,1,'VALID')
@@ -137,16 +140,15 @@ def myconv(inp,C):
   return outp
 
 def myNNfunc(Im,inC,inT,inW,cnum,pnum):
-  # Im(nx,nvec)
+  # Im(nvec,nx)
   # C(clen,cnum)         convolve Im
   # T(cnum,pnum)
   # W(pnum,nfunc)   linear transform polynomials to response functions
   # out(nfunc,nvec)      0 to 1
   
-  nvec = Im.shape[1]
-  
-  Im = Im - tf.reduce_mean(Im,axis=(0));
-  Im = Im / tf.sqrt(tf.reduce_mean(Im**2,axis=0))
+  nvec = Im.shape[0]
+  Im = Im - tf.reshape(tf.reduce_mean(Im,axis=(1)),(nvec,1))
+  Im = Im / tf.reshape(tf.sqrt(tf.reduce_mean(Im**2,axis=1)),(nvec,1))
   
   # Conved(nvec,nc,cnum)
   Conved = myconv(Im,inC)
