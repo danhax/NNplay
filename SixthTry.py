@@ -7,16 +7,16 @@ nper       = 10
 ntrain    = 5000
 ntest     = 5000
 
-nTrainSteps = 1000
+nTrainSteps = 10000
 
 clen = 40
 
 ###
 
-NUMC = 2            # number of convolutions
+NUMC = 5            # number of convolutions
 NUMP = 20          # number of polynomials before relu
 
-startC = NUMC
+startC = NUMC-3
 startP = NUMP
 
 ##############################
