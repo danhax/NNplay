@@ -6,6 +6,10 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 
+######### GLOBAL #########
+
+xrange     = 4
+
 ############# FUNCTIONS ################
 
 ######  positive-valued functions
@@ -22,10 +26,12 @@ def myexp(x):
 def myrand(x):
   return np.exp(np.random.normal(x*0))
 
-def yfunc(ifuncs,xvals,xshift,xfac,yshift,yfac):
+def yfunc(funclist,ifuncs,xvals,xshift,xfac,yshift,yfac):
   # positive-valued function
   #
+  nx = xvals.size
   ninput = ifuncs.size
+  nfunc = ifuncs.size
   assert np.all(np.array(
     [xshift.size,xfac.size,yfac.size]) == ninput)
   assert np.all(ifuncs >= 0) and np.all(ifuncs < nfunc)
@@ -36,13 +42,14 @@ def yfunc(ifuncs,xvals,xshift,xfac,yshift,yfac):
       xfac[isp] * xvals[:,0])
   return yvals
 
-def getdata(functype):
+def getdata(xdata,functype,funclist):
   numvecs = functype.size
+  
   xshift = np.random.normal(np.zeros(numvecs))*xrange
   xfac   = np.random.normal(np.zeros(numvecs))
   yshift = np.random.normal(np.zeros(numvecs))*10
   yfac   = np.random.normal(np.zeros(numvecs))
-  ydata  = yfunc(functype,xdata,xshift,xfac,yshift,yfac)
+  ydata  = yfunc(funclist,functype,xdata,xshift,xfac,yshift,yfac)
   return ydata
 
 #####   TENSORFLOW functions:
@@ -55,6 +62,7 @@ def myconv(inp,C):
   # output
   #   outp(nc,nvec,cnum)
 
+  clen = C.shape[0]
   cnum = C.shape[1]
 
   nvec = inp.shape[0]
@@ -110,11 +118,17 @@ def myNNfunc(Im,inC,inT,inW):
 
   return Max
 
-def DOIT(cnum,pnum,Cinit,Tinit,Winit):
+def DOIT(nTrainSteps,
+         cnum,pnum,Cinit,Tinit,Winit,Y_fit,
+         ytrain_actual,ytest_actual,F_fit,ftrain_actual,ftest_actual,
+         functype_train,functype_test):
   # Cinit(clen,cnum)
   # Tinit(cnum,pnum)
   # Winit(pnum,nfunc)
 
+  nvec = functype_train.size
+  nfunc = Winit.shape[1]
+  
   C = tf.Variable(Cinit)
   T = tf.Variable(Tinit)
   W = tf.Variable(Winit)
@@ -155,7 +169,7 @@ def DOIT(cnum,pnum,Cinit,Tinit,Winit):
           ,feed_dict={Y_fit:ytest_actual,F_fit:ftest_actual})
         
         besttrain = np.reshape(np.argmax(Ftrain_NN_,axis=0),(1,nvec))
-        besttest = np.reshape(np.argmax(Ftest_NN_[0:nfunctest,:],axis=0),(1,nvec))
+        besttest = np.reshape(np.argmax(Ftest_NN_[0:nfunc,:],axis=0),(1,nvec))
         train_error = np.sum([functype_train != besttrain]) / nvec
         test_error = np.sum([functype_test != besttest]) / nvec
         
@@ -173,118 +187,109 @@ def DOIT(cnum,pnum,Cinit,Tinit,Winit):
 
 ######  END FUNCTIONS #########
 
+def main():
+  
+  #######   settings     #######
 
-#######   settings     #######
+  nTrainSteps = 5000
 
-xrange     = 4
-nper       = 10
-nvec       = 5000
+  nvec       = 5000
+  nper       = 10
+  clen = 12
 
-nTrainSteps = 5000
+  NUMC = 4           # number of convolutions
+  NUMP = 20          # number of polynomials before relu
 
-clen = 12
+  startC = NUMC
+  startP = NUMP
 
-###
+  ###### x-values at which to evaluate the functions
 
-NUMC = 4           # number of convolutions
-NUMP = 20          # number of polynomials before relu
+  nx    = xrange * nper
+  xdata = np.arange(xrange*nper)/nper
+  xdata = np.reshape(xdata,(nx,1))
 
-startC = NUMC
-startP = NUMP
+  nc = nx + 1 - clen;
 
-###### x-values at which to evaluate the functions
+  # get the positive-valued functions ydata(nx,nvec)
+  #   with random parameters
 
-nx    = xrange * nper
-xdata = np.arange(xrange*nper)/nper
-xdata = np.reshape(xdata,(nx,1))
-
-nc = nx + 1 - clen;
-
-# get the positive-valued functions ydata(nx,nvec)
-#   with random parameters
-
-DORAND = False
-if DORAND:
-  funclist = [mysin,myquad,myexp,myrand]
-else:
   funclist = [mysin,myquad,myexp]
-nfunc    = len(funclist)
-if DORAND:
-  nfunctest = nfunc-1
-else:
-  nfunctest = nfunc
+  nfunc    = len(funclist)
 
+  ######  random functions for train and test
 
-######  random functions for train and test
+  F_fit = tf.placeholder(tf.float64, shape=(nfunc,nvec))
 
-# output to fit for training
-F_fit = tf.placeholder(tf.float64, shape=(nfunc,nvec))
+  # input
+  Y_fit = tf.placeholder(tf.float64, shape=(nvec,nx))
 
-# input
-Y_fit = tf.placeholder(tf.float64, shape=(nvec,nx))
+  functype_train = np.random.choice(nfunc,nvec)
 
-functype_train = np.random.choice(nfunc,nvec)
+  functype_test  = np.random.choice(nfunc,nvec)
 
-functype_test  = np.random.choice(nfunctest,nvec)
+  ftrain_actual          = np.zeros([nfunc,nvec])
+  for ivec in range(nvec):
+    ftrain_actual[functype_train[ivec],ivec] = 1
 
-ftrain_actual          = np.zeros([nfunc,nvec])
-for ivec in range(nvec):
-  ftrain_actual[functype_train[ivec],ivec] = 1
+  ftest_actual          = np.zeros([nfunc,nvec])
+  for ivec in range(nvec):
+    ftest_actual[functype_test[ivec],ivec] = 1
 
-ftest_actual          = np.zeros([nfunc,nvec])
-for ivec in range(nvec):
-  ftest_actual[functype_test[ivec],ivec] = 1
+  ytrain_actual = getdata(xdata,functype_train,funclist)
+  ytest_actual  = getdata(xdata,functype_test,funclist)
 
-ytrain_actual = getdata(functype_train)
-ytest_actual  = getdata(functype_test)
+  ytrain_actual = np.transpose(ytrain_actual)
+  ytest_actual = np.transpose(ytest_actual)
 
-ytrain_actual = np.transpose(ytrain_actual)
-ytest_actual = np.transpose(ytest_actual)
+  # for ivec in range(nvec):
+  #   plt.scatter(xdata,ytrain_actual[:,ivec])
+  # plt.show()
 
-# for ivec in range(nvec):
-#   plt.scatter(xdata,ytrain_actual[:,ivec])
-# plt.show()
+  #
+  # NN PARAMETERS TO TRAIN
+  #       C, T, W
+  #
 
-#
-# NN PARAMETERS TO TRAIN
-#       C, T, W
-#
+  cnum = startC
+  pnum = startP
 
-cnum = startC
-pnum = startP
-
-Cinit = np.random.normal(np.zeros((clen,cnum)))
-Tinit = np.random.normal(np.zeros((cnum,pnum)))
-Winit = np.random.normal(np.zeros((pnum,nfunc)))
-
-doflag = True
-while doflag :
-    
-  Cfinal, Tfinal, Wfinal = DOIT(cnum,pnum,Cinit,Tinit,Winit)
-
-  doflag = cnum < NUMC or pnum < NUMP
-
-  cprev = cnum
-  pprev = pnum
-  
-  cnum = np.min((cnum+1,NUMC))
-  pnum = np.min((pnum+1,NUMP))
-
-  Cinit = np.zeros((clen,cnum))
-  Tinit = np.zeros((cnum,pnum))
-  Winit = np.zeros((pnum,nfunc))
-  
   Cinit = np.random.normal(np.zeros((clen,cnum)))
-  # Winit = np.random.normal(np.zeros((pnum,nfunc)))
+  Tinit = np.random.normal(np.zeros((cnum,pnum)))
+  Winit = np.random.normal(np.zeros((pnum,nfunc)))
 
-  Cinit[:,0:cprev] = Cfinal
-  Winit[0:pprev,:] = Wfinal
+  doflag = True
+  while doflag :
 
-  Tinit[0:cprev,0:pprev] = Tfinal
-  # Tinit[0:cprev,pprev:pnum] = np.random.normal(np.zeros((cprev,pnum-pprev)))
-  Tinit[:,pprev:pnum] = np.random.normal(np.zeros((cnum,pnum-pprev)))
+    Cfinal, Tfinal, Wfinal = DOIT(nTrainSteps,
+      cnum,pnum,Cinit,Tinit,Winit,Y_fit,ytrain_actual,ytest_actual,
+      F_fit,ftrain_actual,ftest_actual,
+      functype_train,functype_test)
+    doflag = cnum < NUMC or pnum < NUMP
+
+    cprev = cnum
+    pprev = pnum
+
+    cnum = np.min((cnum+1,NUMC))
+    pnum = np.min((pnum+1,NUMP))
+
+    Cinit = np.zeros((clen,cnum))
+    Tinit = np.zeros((cnum,pnum))
+    Winit = np.zeros((pnum,nfunc))
+
+    Cinit = np.random.normal(np.zeros((clen,cnum)))
+    # Winit = np.random.normal(np.zeros((pnum,nfunc)))
+
+    Cinit[:,0:cprev] = Cfinal
+    Winit[0:pprev,:] = Wfinal
+
+    Tinit[0:cprev,0:pprev] = Tfinal
+    # Tinit[0:cprev,pprev:pnum] = np.random.normal(np.zeros((cprev,pnum-pprev)))
+    Tinit[:,pprev:pnum] = np.random.normal(np.zeros((cnum,pnum-pprev)))
   
+main()
 exit()
+
 
 
 
