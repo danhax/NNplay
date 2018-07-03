@@ -138,15 +138,14 @@ def myNNfunc(Im,inC,inT,inW,nvec,nx,clen):
   Im = Im / tf.reshape(tf.sqrt(tf.reduce_mean(Im**2,axis=1)),(nvec,1))
 
   qnum = 1;
-  qstep = 666;
+  qstep = 14;
   
   ndown = np.mod(nx,2) + 1 + 2*qstep
 
   mindim = nc - (qnum-1)*ndown
 
-  assert mindim > 0
-  
-  assert  np.mod(nx,2) == 1
+  assert  mindim          >  0
+  assert  np.mod(nx,2)    == 1
   assert  np.mod(ndown,2) == 0
 
   imList = []
@@ -263,12 +262,12 @@ def main():
   
   #######   settings     #######
 
-  nTrainSteps = 10000
+  nTrainSteps = 50000
 
   nvec       = 5000
   nper       = 10
-  # clen       = 11
-  clen       = 41
+  clen       = 11
+  # clen       = 41
 
   NUMC = 2           # number of convolutions
   NUMP = 20          # number of polynomials before relu
@@ -284,6 +283,7 @@ def main():
 
   nc = nx + 1 - clen;
 
+  ######  random functions for train and test
   # get the positive-valued functions ydata(nx,nvec)
   #   with random parameters
 
@@ -291,15 +291,12 @@ def main():
   funclist = [mysin,myquad]
   nfunc    = len(funclist)
 
-  ######  random functions for train and test
-
+  # output
   F_fit = tf.placeholder(tf.float64, shape=(nfunc,nvec))
-
   # input
   Y_fit = tf.placeholder(tf.float64, shape=(nvec,nx))
 
   functype_train = np.random.choice(nfunc,nvec)
-
   functype_test  = np.random.choice(nfunc,nvec)
 
   ftrain_actual          = np.zeros([nfunc,nvec])
@@ -312,9 +309,8 @@ def main():
 
   ytrain_actual = getdata(xdata,functype_train,funclist)
   ytest_actual  = getdata(xdata,functype_test,funclist)
-
   ytrain_actual = np.transpose(ytrain_actual)
-  ytest_actual = np.transpose(ytest_actual)
+  ytest_actual  = np.transpose(ytest_actual)
 
   # for ivec in range(nvec):
   #   plt.scatter(xdata,ytrain_actual[:,ivec])
