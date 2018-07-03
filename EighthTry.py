@@ -75,43 +75,109 @@ def myconv(inp,C):
   
   return outp
 
-def myNNfunc(Im,inC,inT,inW):
+def downsize(Im,nvec,nx,ndown):
+  assert nvec == Im.shape[0]
+  assert nx == Im.shape[1]
+  nq = nx - ndown;               # must be odd
+  assert np.mod(nq,2) == 1
+  if ndown > 0 :
+    nqh = int(np.round((nq-1)/2))
+    imult = np.identity(nx)
+    imult = np.concatenate(
+      (imult[:,0:nqh],imult[:,(nqh+ndown):nx]),axis=1)
+    imult = tf.cast(imult,tf.complex64)
+    Im = tf.cast(Im,tf.complex64)
+    Im = tf.transpose(tf.fft(tf.transpose(Im)))
+    Im = tf.matmul(Im,imult)
+    Im = tf.transpose(tf.ifft(tf.transpose(Im)))
+    Im = tf.cast(Im,tf.float64)
+  return Im
+
+def upsize(Im,nvec,nx,ndown):
+  ncopy = Im.shape[2]
+  Jm = []
+  for icopy in range(ncopy):
+    Jm = Jm + [tf.reshape(upsize0(Im[:,:,icopy],nvec,nx,ndown),(nvec,nx,1))]
+  Im = tf.concat(Jm,2)
+  return Im
+
+def upsize0(Im,nvec,nx,ndown):
+  assert nvec == Im.shape[0]
+  nq = nx - ndown;               # must be odd
+  assert nq == Im.shape[1]
+  assert np.mod(nq,2) == 1
+  if ndown > 0 :
+    nqh = int(np.round((nq-1)/2))
+    imult = np.identity(nx)
+    imult = np.concatenate(
+      (imult[:,0:nqh],imult[:,(nqh+ndown):nx]),axis=1)
+    imult = tf.cast(np.transpose(imult),tf.complex64)
+    Im = tf.cast(Im,tf.complex64)
+    Im = tf.transpose(tf.fft(tf.transpose(Im)))
+    Im = tf.matmul(Im,imult)
+    Im = tf.transpose(tf.ifft(tf.transpose(Im)))
+    Im = tf.cast(Im,tf.float64)
+  return Im
+
+def myNNfunc(Im,inC,inT,inW,nvec,nx,clen):
   # Im(nvec,nx)
   # C(clen,cnum)         convolve Im
   # T(cnum,pnum)
   # W(pnum,nfunc)   linear transform polynomials to response functions
   # out(nfunc,nvec)      0 to 1
   
-  nvec = Im.shape[0]
-  nx = Im.shape[1]
-  clen = inC.shape[0]
+  assert nvec == Im.shape[0]
+  assert nx == Im.shape[1]
+  assert clen == inC.shape[0]
   cnum = inC.shape[1]
   pnum = inT.shape[1]
   nfunc = inW.shape[1]
   nc = nx + 1 - clen
-  
+
   Im = Im - tf.reshape(tf.reduce_mean(Im,axis=(1)),(nvec,1))
   Im = Im / tf.reshape(tf.sqrt(tf.reduce_mean(Im**2,axis=1)),(nvec,1))
 
-  # imList = [Im*0,Im]
+  qnum = 1;
+  qstep = 666;
   
-  # Conved(nvec,nc,cnum)
-  Conved = myconv(Im,inC)
+  ndown = np.mod(nx,2) + 1 + 2*qstep
+
+  mindim = nc - (qnum-1)*ndown
+
+  assert mindim > 0
   
-  Terms = Conved;
-  
-  # T(cnum,pnum)  ->  Poly(nvec,nc,pnum)
-  Poly = tf.tensordot(Terms,inT,axes=((2),(0)))
+  assert  np.mod(nx,2) == 1
+  assert  np.mod(ndown,2) == 0
+
+  imList = []
+  for iq in range(qnum):
+    imList = imList + [downsize(Im,nvec,nx,iq*ndown)]
+    
+  Conved =[]
+  for iq in range(qnum):
+    # Conved(nvec,nc,cnum)
+    thisconv = myconv(imList[iq],inC)
+    Conved = Conved + [ tf.reshape( upsize(
+        thisconv, nvec,nc,iq*ndown), (nvec,nc,1,cnum))]
+
+  # Terms(nvec,nc,qnum,cnum)
+  Terms = tf.concat(Conved,2)
+
+  # T(cnum,pnum)  ->  Poly(nvec,nc,qnum,pnum)
+  Poly = tf.tensordot(Terms,inT,axes=((3),(0)))
+  if 1==1:
+    Poly = tf.reduce_sum(Poly,axis=(2),keepdims=True)
+    qnum = 1
 
   Poly = tf.nn.relu(Poly)
 
-  # W(pnum,nfunc)  ->  Func(nvec,nc,nfunc)
-  Func = tf.tensordot(Poly,inW,axes=((2),(0)))  
+  # W(pnum,nfunc)  ->  Func(nvec,nc,qnum,nfunc)
+  Func = tf.tensordot(Poly,inW,axes=((3),(0)))  
 
-  Func = tf.reshape(Func,(nvec,nfunc*nc))
+  Func = tf.reshape(Func,(nvec,nfunc*qnum*nc))
   Sigmoid = tf.nn.softmax(Func,1)
-  Sigmoid = tf.reshape(Sigmoid,(nvec,nc,nfunc))
-  Max = tf.reshape(tf.reduce_sum(Sigmoid,axis=1),(nvec,nfunc))
+  Sigmoid = tf.reshape(Sigmoid,(nvec,nc,qnum,nfunc))
+  Max = tf.reshape(tf.reduce_sum(Sigmoid,axis=(1,2)),(nvec,nfunc))
 
   # Max(nfunc,nvec)
   Max = tf.transpose(Max)
@@ -122,7 +188,7 @@ def DOIT(nTrainSteps,
          cnum,pnum,Cinit,Tinit,Winit,
          Y_fit,ytrain_actual,ytest_actual,
          F_fit,ftrain_actual,ftest_actual,
-         functype_train,functype_test):
+         functype_train,functype_test,nvec,nx,clen):
   # Cinit(clen,cnum)
   # Tinit(cnum,pnum)
   # Winit(pnum,nfunc)
@@ -136,7 +202,7 @@ def DOIT(nTrainSteps,
 
   ######      TRAIN    ######
 
-  Ftrain_NN = myNNfunc(Y_fit,C,T,W)
+  Ftrain_NN = myNNfunc(Y_fit,C,T,W,nvec,nx,clen)
 
   # error for each sample
   train_lossper = tf.reshape(
@@ -197,13 +263,14 @@ def main():
   
   #######   settings     #######
 
-  nTrainSteps = 5000
+  nTrainSteps = 10000
 
   nvec       = 5000
   nper       = 10
-  clen = 12
+  # clen       = 11
+  clen       = 41
 
-  NUMC = 4           # number of convolutions
+  NUMC = 2           # number of convolutions
   NUMP = 20          # number of polynomials before relu
 
   startC = NUMC
@@ -211,8 +278,8 @@ def main():
 
   ###### x-values at which to evaluate the functions
 
-  nx    = xrange * nper
-  xdata = np.arange(xrange*nper)/nper
+  nx    = xrange * nper + 1
+  xdata = np.arange(nx)/nper
   xdata = np.reshape(xdata,(nx,1))
 
   nc = nx + 1 - clen;
@@ -220,7 +287,8 @@ def main():
   # get the positive-valued functions ydata(nx,nvec)
   #   with random parameters
 
-  funclist = [mysin,myquad,myexp]
+  # funclist = [mysin,myquad,myexp]
+  funclist = [mysin,myquad]
   nfunc    = len(funclist)
 
   ######  random functions for train and test
@@ -271,7 +339,7 @@ def main():
       nTrainSteps,cnum,pnum,Cinit,Tinit,Winit,
       Y_fit,ytrain_actual,ytest_actual,
       F_fit,ftrain_actual,ftest_actual,
-      functype_train,functype_test)
+      functype_train,functype_test,nvec,nx,clen)
     doflag = cnum < NUMC or pnum < NUMP
 
     cprev = cnum
