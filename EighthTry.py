@@ -201,41 +201,41 @@ def DOIT(nTrainSteps,
 
   ######      TRAIN    ######
 
-  Ftrain_NN = myNNfunc(Y_fit,C,T,W,nvec,nx,clen)
+  F_NN = myNNfunc(Y_fit,C,T,W,nvec,nx,clen)
 
   # error for each sample
-  train_lossper = tf.reshape(
-  #  tf.reduce_sum(tf.abs(F_fit-Ftrain_NN),axis=0),(1,nvec))
-    tf.reduce_sum((F_fit-Ftrain_NN)**2/2,axis=0),(1,nvec))
+  t_lossper = tf.reshape(
+  #  tf.reduce_sum(tf.abs(F_fit-F_NN),axis=0),(1,nvec))
+    tf.reduce_sum((F_fit-F_NN)**2/2,axis=0),(1,nvec))
   # summed over samples
-  train_LOSS = tf.reduce_mean(train_lossper);
+  t_LOSS = tf.reduce_mean(t_lossper);
 
   OPT = tf.train.AdamOptimizer(
     learning_rate=0.0002,beta1=0.9,beta2=0.99,
-    ).minimize(train_LOSS)
+    ).minimize(t_LOSS)
 
   # OPT = tf.train.GradientDescentOptimizer(
-  #   learning_rate=0.001).minimize(train_LOSS)
+  #   learning_rate=0.001).minimize(t_LOSS)
   
   # OPT = tf.train.RMSPropOptimizer(
-  #   learning_rate=0.0003).minimize(train_LOSS)
+  #   learning_rate=0.0003).minimize(t_LOSS)
 
   with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
 
     for istep in range(nTrainSteps+1):
 
-      _, train_loss_, train_lossper_, \
-        Ftrain_NN_, C_, T_, W_ = sess.run(
-        [OPT,train_LOSS,train_lossper,Ftrain_NN,C,T,W]
+      _, train_loss, train_lossper, \
+        Ftrain_NN, C_, T_, W_ = sess.run(
+        [OPT,t_LOSS,t_lossper,F_NN,C,T,W]
         ,feed_dict={Y_fit:ytrain_actual,F_fit:ftrain_actual})
       if np.mod(istep,100)==0:
-        test_loss_, test_errorper, Ftest_NN_ = sess.run(
-          [train_LOSS, train_lossper, Ftrain_NN]
+        test_loss, test_lossper, Ftest_NN_ = sess.run(
+          [t_LOSS, t_lossper, F_NN]
           ,feed_dict={Y_fit:ytest_actual,F_fit:ftest_actual})
         
         besttrain = np.reshape(
-          np.argmax(Ftrain_NN_,axis=0),(1,nvec))
+          np.argmax(Ftrain_NN,axis=0),(1,nvec))
         besttest = np.reshape(
           np.argmax(Ftest_NN_[0:nfunc,:],axis=0),(1,nvec))
         train_error = np.sum(
@@ -244,13 +244,13 @@ def DOIT(nTrainSteps,
           [functype_test != besttest]) / nvec
         
         print(' step %i of %i  loss %.7s %.7s  errorRate %.7s %.7s'%(
-          istep,nTrainSteps,train_loss_,
-          test_loss_,train_error,test_error))
+          istep,nTrainSteps,train_loss,
+          test_loss,train_error,test_error))
 
 
-  plt.scatter(np.arange(nvec),test_errorper)
+  plt.scatter(np.arange(nvec),test_lossper)
   plt.show()
-  plt.scatter(functype_test,test_errorper)
+  plt.scatter(functype_test,test_lossper)
   plt.show()
   input('#press enter')
 
