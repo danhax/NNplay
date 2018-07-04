@@ -7,6 +7,5 @@ SixthTry.py :  MonPwr removed, just convolutions not polynomials thereof
 
 SeventhTry : with softmax summed over pixels works with smaller clen
 
-
-
+EighthTry : With multiple sizes using fft pool
 

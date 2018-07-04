@@ -101,16 +101,16 @@ def upsize(Im,nvec,nx,ndown):
   Im = tf.concat(Jm,2)
   return Im
 
-def upsize0(Im,nvec,nx,ndown):
+def upsize0(Im,nvec,nc,ndown):
   assert nvec == Im.shape[0]
-  nq = nx - ndown;               # must be odd
+  nq = nc - ndown;               # must be odd
   assert nq == Im.shape[1]
   assert np.mod(nq,2) == 1
   if ndown > 0 :
     nqh = int(np.round((nq-1)/2))
-    imult = np.identity(nx)
+    imult = np.identity(nc)
     imult = np.concatenate(
-      (imult[:,0:nqh],imult[:,(nqh+ndown):nx]),axis=1)
+      (imult[:,0:nqh],imult[:,(nqh+ndown):nc]),axis=1)
     imult = tf.cast(np.transpose(imult),tf.complex64)
     Im = tf.cast(Im,tf.complex64)
     Im = tf.transpose(tf.fft(tf.transpose(Im)))
@@ -118,6 +118,41 @@ def upsize0(Im,nvec,nx,ndown):
     Im = tf.transpose(tf.ifft(tf.transpose(Im)))
     Im = tf.cast(Im,tf.float64)
   return Im
+
+def downsizeXX(Im,nvec,nx,qnum,ndown):
+  assert nvec == Im.shape[0]
+  assert nx == Im.shape[1]
+  for iq in range(qnum):
+    nq = nx - iq*ndown;               # must be odd
+    assert np.mod(nq,2) == 1
+    if iq == 0 :
+      ImList = [Im]
+    else :
+      nqh = int(np.round((nq-1)/2))
+      imult = np.identity(nx)
+      imult = np.concatenate(
+        (imult[:,0:nqh],imult[:,(nqh+iq*ndown):nx]),axis=1)
+      imult = tf.cast(imult,tf.complex64)
+      ImFt = tf.cast(Im,tf.complex64)
+      ImFt = tf.transpose(tf.fft(tf.transpose(ImFt)))
+      ImFt = tf.matmul(ImFt,imult)
+      ImFt = tf.transpose(tf.ifft(tf.transpose(ImFt)))
+      ImList = ImList + [ tf.cast(ImFt,tf.float64) ]
+  return ImList
+
+def upsizeXX(ImList,nvec,nc,qnum,ndown):
+  # 
+  assert qnum == len(ImList)
+  # each image in imlist dimension (nc,nvec,cnum)
+  ncopy = ImList[0].shape[2]
+  for iq in range(qnum) :
+    Im = ImList[iq]
+    Jm = []
+    for icopy in range(ncopy):
+      Jm = Jm + [tf.reshape(upsize0(Im[:,:,icopy],nvec,nc,iq*ndown),(nvec,nc,1))]
+    Im = tf.concat(Jm,2)
+    ImList[iq] = Im
+  return ImList
 
 def myNNfunc(Im,inC,inT,inW,nvec,nx,clen):
   # Im(nvec,nx)
@@ -137,8 +172,12 @@ def myNNfunc(Im,inC,inT,inW,nvec,nx,clen):
   Im = Im - tf.reshape(tf.reduce_mean(Im,axis=(1)),(nvec,1))
   Im = Im / tf.reshape(tf.sqrt(tf.reduce_mean(Im**2,axis=1)),(nvec,1))
 
-  qnum = 1;
-  qstep = 14;
+  # qnum = 1
+  # qstep = 666
+  # qnum = 2
+  # qstep = 14
+  qnum = 3
+  qstep = 6
   
   ndown = np.mod(nx,2) + 1 + 2*qstep
 
@@ -151,13 +190,23 @@ def myNNfunc(Im,inC,inT,inW,nvec,nx,clen):
   imList = []
   for iq in range(qnum):
     imList = imList + [downsize(Im,nvec,nx,iq*ndown)]
+
+  # imList = downsize(Im,nvec,nx,qnum,ndown)
     
   Conved =[]
   for iq in range(qnum):
     # Conved(nvec,nc,cnum)
     thisconv = myconv(imList[iq],inC)
     Conved = Conved + [ tf.reshape( upsize(
-        thisconv, nvec,nc,iq*ndown), (nvec,nc,1,cnum))]
+       thisconv, nvec,nc,iq*ndown), (nvec,nc,1,cnum))]
+
+  # Conved =[]
+  # for iq in range(qnum) :
+  #   Conved = Conved + [myconv(imList[iq],inC)]
+  # # have Conved[iq] dimension (nvec,nc,cnum)
+  # Conved = upsize(Conved, nvec,nc,qnum,ndown)
+  # for iq in range(qnum) :
+  #   Conved[iq] = tf.reshape( Conved[iq], (nvec,nc,1,cnum))
 
   # Terms(nvec,nc,qnum,cnum)
   Terms = tf.concat(Conved,2)
