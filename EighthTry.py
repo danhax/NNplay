@@ -54,23 +54,24 @@ def getdata(xdata,functype,funclist):
 
 #####   TENSORFLOW functions:
 
-def myconv(inp,C):
-
+def myconv(inpinp,C):
   # input
   #   inp(nvec,nx)
   #   C(clen,cnum)
   # output
   #   outp(nc,nvec,cnum)
 
+  inp = inpinp;  #  tf.Variable(inpinp)
+  
   clen = C.shape[0]
   cnum = C.shape[1]
 
   nvec = inp.shape[0]
   nx   = inp.shape[1]
   inp=tf.reshape(inp,(nvec,nx,1))
-  C  =tf.reshape(C,  (clen,1,cnum))
+  Q  =tf.reshape(C,  (clen,1,cnum))
 
-  outp = tf.nn.conv1d(inp,C,1,'VALID')
+  outp = tf.nn.conv1d(inp,Q,1,'VALID')
   # have outp(nvec, nc, cnum)
   
   return outp
@@ -80,48 +81,34 @@ def downsize(Im,nvec,nx,ndown):
   assert nx == Im.shape[1]
   nq = nx - ndown;               # must be odd
   assert np.mod(nq,2) == 1
-  if ndown > 0 :
+  if ndown == 0 :
+    Jm = Im  # tf.Variable(Im)
+  else :
     nqh = int(np.round((nq-1)/2))
     imult = np.identity(nx)
     imult = np.concatenate(
       (imult[:,0:nqh],imult[:,(nqh+ndown):nx]),axis=1)
     imult = tf.cast(imult,tf.complex64)
-    Im = tf.cast(Im,tf.complex64)
-    Im = tf.transpose(tf.fft(tf.transpose(Im)))
-    Im = tf.matmul(Im,imult)
-    Im = tf.transpose(tf.ifft(tf.transpose(Im)))
-    Im = tf.cast(Im,tf.float64)
-  return Im
+    Jm = tf.cast(Im,tf.complex64)
+    Jm = tf.transpose(tf.fft(tf.transpose(Jm)))
+    Jm = tf.matmul(Jm,imult)
+    Jm = tf.transpose(tf.ifft(tf.transpose(Jm)))
+    Jm = tf.cast(Jm,tf.float64)
+  return Jm
 
-def upsize(Im,nvec,nx,ndown):
-  ncopy = Im.shape[2]
-  Jm = []
-  for icopy in range(ncopy):
-    Jm = Jm + [tf.reshape(upsize0(Im[:,:,icopy],nvec,nx,ndown),(nvec,nx,1))]
-  Im = tf.concat(Jm,2)
-  return Im
+def downsizeYY(Im,nvec,nx,qnum,ndown):
+  imList = []
+  for iq in range(qnum):
+    imList = imList + [downsize(Im,nvec,nx,iq*ndown)]
+  return imList
 
-def upsize0(Im,nvec,nc,ndown):
-  assert nvec == Im.shape[0]
-  nq = nc - ndown;               # must be odd
-  assert nq == Im.shape[1]
-  assert np.mod(nq,2) == 1
-  if ndown > 0 :
-    nqh = int(np.round((nq-1)/2))
-    imult = np.identity(nc)
-    imult = np.concatenate(
-      (imult[:,0:nqh],imult[:,(nqh+ndown):nc]),axis=1)
-    imult = tf.cast(np.transpose(imult),tf.complex64)
-    Im = tf.cast(Im,tf.complex64)
-    Im = tf.transpose(tf.fft(tf.transpose(Im)))
-    Im = tf.matmul(Im,imult)
-    Im = tf.transpose(tf.ifft(tf.transpose(Im)))
-    Im = tf.cast(Im,tf.float64)
-  return Im
-
-def downsizeXX(Im,nvec,nx,qnum,ndown):
+def downsizeXX(inIm,nvec,nx,qnum,ndown):
+  Im = inIm   # tf.Variable(inIm)
   assert nvec == Im.shape[0]
   assert nx == Im.shape[1]
+  if qnum > 1 :
+    ImFt = tf.cast(Im,tf.complex64)
+    ImFt = tf.transpose(tf.fft(tf.transpose(ImFt)))
   for iq in range(qnum):
     nq = nx - iq*ndown;               # must be odd
     assert np.mod(nq,2) == 1
@@ -133,26 +120,53 @@ def downsizeXX(Im,nvec,nx,qnum,ndown):
       imult = np.concatenate(
         (imult[:,0:nqh],imult[:,(nqh+iq*ndown):nx]),axis=1)
       imult = tf.cast(imult,tf.complex64)
-      ImFt = tf.cast(Im,tf.complex64)
-      ImFt = tf.transpose(tf.fft(tf.transpose(ImFt)))
-      ImFt = tf.matmul(ImFt,imult)
-      ImFt = tf.transpose(tf.ifft(tf.transpose(ImFt)))
-      ImList = ImList + [ tf.cast(ImFt,tf.float64) ]
+      Jm = tf.matmul(ImFt,imult)
+      Km = tf.transpose(tf.ifft(tf.transpose(Jm)))
+      ImList = ImList + [ tf.cast(Km,tf.float64) ]
   return ImList
+
+def upsize(Im,nvec,nx,ndown):
+  ncopy = Im.shape[2]
+  Jm = []
+  for icopy in range(ncopy):
+    Jm = Jm + [tf.reshape(upsize0(Im[:,:,icopy],nvec,nx,ndown),(nvec,nx,1))]
+  Km = tf.concat(Jm,2)
+  return Km
+
+def upsize0(Im,nvec,nc,ndown):
+  assert nvec == Im.shape[0]
+  nq = nc - ndown;               # must be odd
+  assert nq == Im.shape[1]
+  assert np.mod(nq,2) == 1
+  if ndown == 0 :
+    Km = Im   # tf.Variable(Im)
+  else :
+    nqh = int(np.round((nq-1)/2))
+    imult = np.identity(nc)
+    imult = np.concatenate(
+      (imult[:,0:nqh],imult[:,(nqh+ndown):nc]),axis=1)
+    imult = tf.cast(np.transpose(imult),tf.complex64)
+    Jm = tf.cast(Im,tf.complex64)
+    Jm = tf.transpose(tf.fft(tf.transpose(Jm)))
+    Jm = tf.matmul(Jm,imult)
+    Jm = tf.transpose(tf.ifft(tf.transpose(Jm)))
+    Km = tf.cast(Jm,tf.float64)
+  return Km
 
 def upsizeXX(ImList,nvec,nc,qnum,ndown):
   # 
   assert qnum == len(ImList)
   # each image in imlist dimension (nc,nvec,cnum)
   ncopy = ImList[0].shape[2]
+  OutList = []
   for iq in range(qnum) :
-    Im = ImList[iq]
+    Im = ImList[iq]   # tf.Variable(ImList[iq])
     Jm = []
     for icopy in range(ncopy):
       Jm = Jm + [tf.reshape(upsize0(Im[:,:,icopy],nvec,nc,iq*ndown),(nvec,nc,1))]
-    Im = tf.concat(Jm,2)
-    ImList[iq] = Im
-  return ImList
+    Km = tf.concat(Jm,2)
+    OutList = OutList + [Km]
+  return OutList
 
 def myNNfunc(Im,inC,inT,inW,nvec,nx,clen):
   # Im(nvec,nx)
@@ -160,7 +174,7 @@ def myNNfunc(Im,inC,inT,inW,nvec,nx,clen):
   # T(cnum,pnum)
   # W(pnum,nfunc)   linear transform polynomials to response functions
   # out(nfunc,nvec)      0 to 1
-  
+
   assert nvec == Im.shape[0]
   assert nx == Im.shape[1]
   assert clen == inC.shape[0]
@@ -169,8 +183,8 @@ def myNNfunc(Im,inC,inT,inW,nvec,nx,clen):
   nfunc = inW.shape[1]
   nc = nx + 1 - clen
 
-  Im = Im - tf.reshape(tf.reduce_mean(Im,axis=(1)),(nvec,1))
-  Im = Im / tf.reshape(tf.sqrt(tf.reduce_mean(Im**2,axis=1)),(nvec,1))
+  Jm = Im - tf.reshape(tf.reduce_mean(Im,axis=(1)),(nvec,1))
+  Jm = Jm / tf.reshape(tf.sqrt(tf.reduce_mean(Jm**2,axis=1)),(nvec,1))
 
   # qnum = 1
   # qstep = 666
@@ -187,30 +201,37 @@ def myNNfunc(Im,inC,inT,inW,nvec,nx,clen):
   assert  np.mod(nx,2)    == 1
   assert  np.mod(ndown,2) == 0
 
-  imList = []
-  for iq in range(qnum):
-    imList = imList + [downsize(Im,nvec,nx,iq*ndown)]
+  if 1==0 :    
+    imList = []
+    for iq in range(qnum):
+      imList = imList + [downsize(Jm,nvec,nx,iq*ndown)]
+      
+  else:
+    imList = downsizeXX(Jm,nvec,nx,qnum,ndown)
 
-  # imList = downsize(Im,nvec,nx,qnum,ndown)
-    
-  Conved =[]
-  for iq in range(qnum):
-    # Conved(nvec,nc,cnum)
-    thisconv = myconv(imList[iq],inC)
-    Conved = Conved + [ tf.reshape( upsize(
-       thisconv, nvec,nc,iq*ndown), (nvec,nc,1,cnum))]
+  if 1==0 :
+    Conved =[]
+    for iq in range(qnum):
+      # Conved(nvec,nc,cnum)
+      thisconv = myconv(imList[iq],inC)
+      Conved = Conved + [ upsize(thisconv, nvec,nc,iq*ndown) ]
+      #
+      # Conved = Conved + [ tf.reshape( upsize(
+      #    thisconv, nvec,nc,iq*ndown), (nvec,nc,1,cnum))]
+  else:
+    thisconv =[]
+    for iq in range(qnum) :
+      thisconv = thisconv + [myconv(imList[iq],inC)]
+    # have Conved[iq] dimension (nvec,nc,cnum)
+    Conved = upsizeXX(thisconv, nvec,nc,qnum,ndown)
 
-  # Conved =[]
-  # for iq in range(qnum) :
-  #   Conved = Conved + [myconv(imList[iq],inC)]
-  # # have Conved[iq] dimension (nvec,nc,cnum)
-  # Conved = upsize(Conved, nvec,nc,qnum,ndown)
-  # for iq in range(qnum) :
-  #   Conved[iq] = tf.reshape( Conved[iq], (nvec,nc,1,cnum))
+  Reshaped = []
+  for iq in range(qnum) :
+    Reshaped = Reshaped + [tf.reshape( Conved[iq], (nvec,nc,1,cnum))]
 
   # Terms(nvec,nc,qnum,cnum)
-  Terms = tf.concat(Conved,2)
-
+  Terms = tf.concat(Reshaped,2)
+  
   # T(cnum,pnum)  ->  Poly(nvec,nc,qnum,pnum)
   Poly = tf.tensordot(Terms,inT,axes=((3),(0)))
   if 1==1:
@@ -232,8 +253,7 @@ def myNNfunc(Im,inC,inT,inW,nvec,nx,clen):
 
   return Max
 
-def DOIT(nTrainSteps,
-         cnum,pnum,Cinit,Tinit,Winit,
+def DOIT(nTrainSteps,cnum,pnum,Cinit,Tinit,Winit,
          Y_fit,ytrain_actual,ytest_actual,
          F_fit,ftrain_actual,ftest_actual,
          functype_train,functype_test,nvec,nx,clen):
@@ -251,7 +271,7 @@ def DOIT(nTrainSteps,
   ######      TRAIN    ######
 
   F_NN = myNNfunc(Y_fit,C,T,W,nvec,nx,clen)
-
+  
   # error for each sample
   t_lossper = tf.reshape(
   #  tf.reduce_sum(tf.abs(F_fit-F_NN),axis=0),(1,nvec))
@@ -269,15 +289,16 @@ def DOIT(nTrainSteps,
   # OPT = tf.train.RMSPropOptimizer(
   #   learning_rate=0.0003).minimize(t_LOSS)
 
+  
   with tf.Session() as sess:
     sess.run(tf.global_variables_initializer())
-
     for istep in range(nTrainSteps+1):
 
       _, train_loss, train_lossper, \
         Ftrain_NN, C_, T_, W_ = sess.run(
         [OPT,t_LOSS,t_lossper,F_NN,C,T,W]
         ,feed_dict={Y_fit:ytrain_actual,F_fit:ftrain_actual})
+
       if np.mod(istep,100)==0:
         test_loss, test_lossper, Ftest_NN_ = sess.run(
           [t_LOSS, t_lossper, F_NN]
