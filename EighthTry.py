@@ -186,12 +186,16 @@ def myNNfunc(Im,inC,inT,inW,nvec,nx,clen):
   Jm = Im - tf.reshape(tf.reduce_mean(Im,axis=(1)),(nvec,1))
   Jm = Jm / tf.reshape(tf.sqrt(tf.reduce_mean(Jm**2,axis=1)),(nvec,1))
 
+  # 41 pts, clen 11:
   # qnum = 1
   # qstep = 666
   # qnum = 2
   # qstep = 14
+  # qnum = 3
+  # qstep = 6
+  # 21 pts, clen 7:
   qnum = 3
-  qstep = 6
+  qstep = 2
   
   ndown = np.mod(nx,2) + 1 + 2*qstep
 
@@ -201,7 +205,7 @@ def myNNfunc(Im,inC,inT,inW,nvec,nx,clen):
   assert  np.mod(nx,2)    == 1
   assert  np.mod(ndown,2) == 0
 
-  if 1==0 :    
+  if 1==0 :
     imList = []
     for iq in range(qnum):
       imList = imList + [downsize(Jm,nvec,nx,iq*ndown)]
@@ -335,9 +339,11 @@ def main():
   nTrainSteps = 50000
 
   nvec       = 5000
-  nper       = 10
-  clen       = 11
-  # clen       = 41
+  nper       = 5
+  clen       = 7
+  #nper       = 10
+  #clen       = 11
+  ## clen       = 41
 
   NUMC = 2           # number of convolutions
   NUMP = 20          # number of polynomials before relu
