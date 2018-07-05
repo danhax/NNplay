@@ -168,11 +168,11 @@ def upsizeXX(ImList,nvec,nc,qnum,ndown):
     OutList = OutList + [Km]
   return OutList
 
-def myNNfunc(Im,inC,inT,inW,nvec,nx,clen):
+def myNNfunc(Im,inC,inT,inW,nvec,nx,clen,qstep):
   # Im(nvec,nx)
   # C(clen,cnum)         convolve Im
   # T(cnum,pnum)
-  # W(pnum,nfunc)   linear transform polynomials to response functions
+  # W(qnum,pnum,nfunc)   linear transform polynomials to response functions
   # out(nfunc,nvec)      0 to 1
 
   assert nvec == Im.shape[0]
@@ -180,23 +180,16 @@ def myNNfunc(Im,inC,inT,inW,nvec,nx,clen):
   assert clen == inC.shape[0]
   cnum = inC.shape[1]
   pnum = inT.shape[1]
-  nfunc = inW.shape[1]
+  nfunc = inW.shape[2]
+  qnum = inW.shape[0]
+
+  assert pnum == inW.shape[1]
+  
   nc = nx + 1 - clen
 
   Jm = Im - tf.reshape(tf.reduce_mean(Im,axis=(1)),(nvec,1))
   Jm = Jm / tf.reshape(tf.sqrt(tf.reduce_mean(Jm**2,axis=1)),(nvec,1))
 
-  # 41 pts, clen 11:
-  qnum = 1
-  qstep = 666
-  # qnum = 2
-  # qstep = 14
-  # qnum = 3
-  # qstep = 6
-  # 21 pts, clen 7:
-  # qnum = 3
-  # qstep = 2
-  
   ndown = np.mod(nx,2) + 1 + 2*qstep
 
   mindim = nc - (qnum-1)*ndown
@@ -244,29 +237,29 @@ def myNNfunc(Im,inC,inT,inW,nvec,nx,clen):
 
   Poly = tf.nn.relu(Poly)
 
-  # W(pnum,nfunc)  ->  Func(nvec,nc,qnum,nfunc)
-  Func = tf.tensordot(Poly,inW,axes=((3),(0)))  
+  # W(qnum,pnum,nfunc)  ->  Func(nvec,nc,nfunc)
+  Func = tf.tensordot(Poly,inW,axes=((2,3),(0,1)))  
 
-  Func = tf.reshape(Func,(nvec,nfunc*qnum*nc))
+  Func = tf.reshape(Func,(nvec,nfunc*nc))
   Sigmoid = tf.nn.softmax(Func,1)
-  Sigmoid = tf.reshape(Sigmoid,(nvec,nc,qnum,nfunc))
-  Max = tf.reshape(tf.reduce_sum(Sigmoid,axis=(1,2)),(nvec,nfunc))
+  Sigmoid = tf.reshape(Sigmoid,(nvec,nc,nfunc))
+  Max = tf.reshape(tf.reduce_sum(Sigmoid,axis=(1)),(nvec,nfunc))
 
   # Max(nfunc,nvec)
   Max = tf.transpose(Max)
 
   return Max
 
-def DOIT(nTrainSteps,cnum,pnum,Cinit,Tinit,Winit,
+def DOIT(nTrainSteps,cnum,pnum,qnum,Cinit,Tinit,Winit,
          Y_fit,ytrain_actual,ytest_actual,
          F_fit,ftrain_actual,ftest_actual,
-         functype_train,functype_test,nvec,nx,clen):
+         functype_train,functype_test,nvec,nx,clen,qstep):
   # Cinit(clen,cnum)
   # Tinit(cnum,pnum)
-  # Winit(pnum,nfunc)
+  # Winit(qnum,qnum,nfunc)
 
   nvec = functype_train.size
-  nfunc = Winit.shape[1]
+  nfunc = Winit.shape[2]
   
   C = tf.Variable(Cinit)
   T = tf.Variable(Tinit)
@@ -274,7 +267,7 @@ def DOIT(nTrainSteps,cnum,pnum,Cinit,Tinit,Winit,
 
   ######      TRAIN    ######
 
-  F_NN = myNNfunc(Y_fit,C,T,W,nvec,nx,clen)
+  F_NN = myNNfunc(Y_fit,C,T,W,nvec,nx,clen,qstep)
   
   # error for each sample
   t_lossper = tf.reshape(
@@ -342,9 +335,12 @@ def main():
   #nper       = 5
   #clen       = 7
   nper       = 10
-  clen       = 11
+  clen       = 5
   # clen       = 41
 
+  qnum  = 3
+  qstep = 8
+  
   NUMC = 2           # number of convolutions
   NUMP = 20          # number of polynomials before relu
 
@@ -402,16 +398,16 @@ def main():
 
   Cinit = np.random.normal(np.zeros((clen,cnum)))
   Tinit = np.random.normal(np.zeros((cnum,pnum)))
-  Winit = np.random.normal(np.zeros((pnum,nfunc)))
+  Winit = np.random.normal(np.zeros((qnum,pnum,nfunc)))
 
   doflag = True
   while doflag :
 
     Cfinal, Tfinal, Wfinal = DOIT(
-      nTrainSteps,cnum,pnum,Cinit,Tinit,Winit,
+      nTrainSteps,cnum,pnum,qnum,Cinit,Tinit,Winit,
       Y_fit,ytrain_actual,ytest_actual,
       F_fit,ftrain_actual,ftest_actual,
-      functype_train,functype_test,nvec,nx,clen)
+      functype_train,functype_test,nvec,nx,clen,qstep)
     doflag = cnum < NUMC or pnum < NUMP
 
     cprev = cnum
@@ -422,13 +418,13 @@ def main():
 
     Cinit = np.zeros((clen,cnum))
     Tinit = np.zeros((cnum,pnum))
-    Winit = np.zeros((pnum,nfunc))
+    Winit = np.zeros((qnum,pnum,nfunc))
 
     Cinit = np.random.normal(np.zeros((clen,cnum)))
-    # Winit = np.random.normal(np.zeros((pnum,nfunc)))
+    # Winit = np.random.normal(np.zeros((qnum,pnum,nfunc)))
 
     Cinit[:,0:cprev] = Cfinal
-    Winit[0:pprev,:] = Wfinal
+    Winit[:,0:pprev,:] = Wfinal
 
     Tinit[0:cprev,0:pprev] = Tfinal
     # Tinit[0:cprev,pprev:pnum] =
