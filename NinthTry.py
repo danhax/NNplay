@@ -54,7 +54,7 @@ def getdata(xdata,functype,funclist):
 
 #####   TENSORFLOW functions:
 
-def myconv(inpinp,C):
+def myconv(inpinp,nvec,nx,clen,cnum,C):
   # input
   #   inp(nvec,nx)
   #   C(clen,cnum)
@@ -63,11 +63,11 @@ def myconv(inpinp,C):
 
   inp = inpinp;  #  tf.Variable(inpinp)
   
-  clen = C.shape[0]
-  cnum = C.shape[1]
+  assert clen == C.shape[0]
+  assert cnum == C.shape[1]
+  assert nvec == inp.shape[0]
+  assert nx   == inp.shape[1]
 
-  nvec = inp.shape[0]
-  nx   = inp.shape[1]
   inp=tf.reshape(inp,(nvec,nx,1))
   Q  =tf.reshape(C,  (clen,1,cnum))
 
@@ -78,7 +78,7 @@ def myconv(inpinp,C):
 
 def downsize(Im,nvec,nx,ndown):
   assert nvec == Im.shape[0]
-  assert nx == Im.shape[1]
+  assert nx   == Im.shape[1]
   nq = nx - ndown;               # must be odd
   assert np.mod(nq,2) == 1
   if ndown == 0 :
@@ -125,11 +125,11 @@ def downsizeXX(inIm,nvec,nx,qnum,ndown):
       ImList = ImList + [ tf.cast(Km,tf.float64) ]
   return ImList
 
-def upsize(Im,nvec,nx,ndown):
-  ncopy = Im.shape[2]
+def upsize(Im,nvec,nc,ncopy,ndown):
+  assert ncopy == Im.shape[2]
   Jm = []
   for icopy in range(ncopy):
-    Jm = Jm + [tf.reshape(upsize0(Im[:,:,icopy],nvec,nx,ndown),(nvec,nx,1))]
+    Jm = Jm + [tf.reshape(upsize0(Im[:,:,icopy],nvec,nc,ndown),(nvec,nc,1))]
   Km = tf.concat(Jm,2)
   return Km
 
@@ -153,11 +153,11 @@ def upsize0(Im,nvec,nc,ndown):
     Km = tf.cast(Jm,tf.float64)
   return Km
 
-def upsizeXX(ImList,nvec,nc,qnum,ndown):
+def upsizeXX(ImList,nvec,nc,ncopy,qnum,ndown):
   # 
   assert qnum == len(ImList)
   # each image in imlist dimension (nc,nvec,cnum)
-  ncopy = ImList[0].shape[2]
+  assert ncopy == ImList[0].shape[2]
   OutList = []
   for iq in range(qnum) :
     Im = ImList[iq]   # tf.Variable(ImList[iq])
@@ -168,22 +168,21 @@ def upsizeXX(ImList,nvec,nc,qnum,ndown):
     OutList = OutList + [Km]
   return OutList
 
-def myNNfunc(Im,inC,inT,inW,nvec,nx,clen,qstep):
+def myNNfunc(Im,inC,inT,inW,nvec,nx,clen,cnum,pnum,qnum,nfunc,qstep):
   # Im(nvec,nx)
   # C(clen,cnum)         convolve Im
   # T(cnum,pnum)
   # W(qnum,pnum,nfunc)   linear transform polynomials to response functions
   # out(nfunc,nvec)      0 to 1
 
-  assert nvec == Im.shape[0]
-  assert nx == Im.shape[1]
-  assert clen == inC.shape[0]
-  cnum = inC.shape[1]
-  pnum = inT.shape[1]
-  nfunc = inW.shape[2]
-  qnum = inW.shape[0]
-
-  assert pnum == inW.shape[1]
+  assert nvec  == Im.shape[0]
+  assert nx    == Im.shape[1]
+  assert clen  == inC.shape[0]
+  assert cnum  == inC.shape[1]
+  assert pnum  == inT.shape[1]
+  assert nfunc == inW.shape[2]
+  assert qnum  == inW.shape[0]
+  assert pnum  == inW.shape[1]
   
   nc = nx + 1 - clen
 
@@ -210,17 +209,19 @@ def myNNfunc(Im,inC,inT,inW,nvec,nx,clen,qstep):
     Conved =[]
     for iq in range(qnum):
       # Conved(nvec,nc,cnum)
-      thisconv = myconv(imList[iq],inC)
-      Conved = Conved + [ upsize(thisconv, nvec,nc,iq*ndown) ]
+      nq = nx - iq*ndown;               # must be odd
+      thisconv = myconv(imList[iq],nvec,nq,clen,cnum,inC)
+      Conved = Conved + [ upsize(thisconv, nvec,nc,cnum,iq*ndown) ]
       #
       # Conved = Conved + [ tf.reshape( upsize(
-      #    thisconv, nvec,nc,iq*ndown), (nvec,nc,1,cnum))]
+      #    thisconv, nvec,cnum,nc,iq*ndown), (nvec,nc,1,cnum))]
   else:
     thisconv =[]
     for iq in range(qnum) :
-      thisconv = thisconv + [myconv(imList[iq],inC)]
+      nq = nx - iq*ndown;               # must be odd
+      thisconv = thisconv + [myconv(imList[iq],nvec,nq,clen,cnum,inC)]
     # have Conved[iq] dimension (nvec,nc,cnum)
-    Conved = upsizeXX(thisconv, nvec,nc,qnum,ndown)
+    Conved = upsizeXX(thisconv, nvec,nc,cnum,qnum,ndown)
 
   Reshaped = []
   for iq in range(qnum) :
@@ -231,9 +232,6 @@ def myNNfunc(Im,inC,inT,inW,nvec,nx,clen,qstep):
   
   # T(cnum,pnum)  ->  Poly(nvec,nc,qnum,pnum)
   Poly = tf.tensordot(Terms,inT,axes=((3),(0)))
-  if 1==0:
-    Poly = tf.reduce_sum(Poly,axis=(2),keepdims=True)
-    qnum = 1
 
   Poly = tf.nn.relu(Poly)
 
@@ -267,7 +265,7 @@ def DOIT(nTrainSteps,cnum,pnum,qnum,Cinit,Tinit,Winit,
 
   ######      TRAIN    ######
 
-  F_NN = myNNfunc(Y_fit,C,T,W,nvec,nx,clen,qstep)
+  F_NN = myNNfunc(Y_fit,C,T,W,nvec,nx,clen,cnum,pnum,qnum,nfunc,qstep)
   
   # error for each sample
   t_lossper = tf.reshape(
@@ -277,7 +275,8 @@ def DOIT(nTrainSteps,cnum,pnum,qnum,Cinit,Tinit,Winit,
   t_LOSS = tf.reduce_mean(t_lossper);
 
   OPT = tf.train.AdamOptimizer(
-    learning_rate=0.0002,beta1=0.9,beta2=0.99,
+    learning_rate=0.002,beta1=0.9,beta2=0.99,
+  #  learning_rate=0.0002,beta1=0.9,beta2=0.99,
     ).minimize(t_LOSS)
 
   # OPT = tf.train.GradientDescentOptimizer(
@@ -332,14 +331,16 @@ def main():
   nTrainSteps = 50000
 
   nvec       = 5000
-  #nper       = 5
-  #clen       = 7
-  nper       = 10
-  clen       = 5
-  # clen       = 41
+  # nper       = 10
+  nper  = 5
+  
+  #clen       = 5
+  clen       = 3
 
-  qnum  = 3
-  qstep = 8
+  # qnum  = 3
+  # qstep = 8
+  qnum  = 5
+  qstep = 1
   
   NUMC = 2           # number of convolutions
   NUMP = 20          # number of polynomials before relu
